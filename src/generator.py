@@ -60,6 +60,7 @@ class Generator:
 
 if __name__ == "__main__":
     import os
+    import sys
 
     from dotenv import load_dotenv
 
@@ -69,7 +70,7 @@ if __name__ == "__main__":
     retriever = Retriever()
     generator = Generator(os.environ["GROQ_API_KEY"])
 
-    question = "Quelle est la durée légale de travail hebdomadaire ?"
+    question = " ".join(sys.argv[1:]) or "Quelle est la durée légale de travail hebdomadaire ?"
     chunks = retriever.rechercher(question)
     resultat = generator.repondre(question, chunks)
     print(f"Q : {question}\n")
