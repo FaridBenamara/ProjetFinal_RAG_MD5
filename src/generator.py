@@ -14,8 +14,10 @@ class Generator:
         "ou l'inspection du travail pour votre situation personnelle."
     )
     REFUS = "Je ne trouve pas cette information dans ma base."
-    # mesure sur le corpus : questions du domaine 0.17-0.38, hors sujet 0.56-0.88
-    SEUIL_DISTANCE = 0.45
+    # mesure sur le corpus : questions du domaine <= 0.54, hors sujet >= 0.56.
+    # le seuil n'ecarte que le clairement hors sujet ; dans la zone grise,
+    # c'est le prompt qui refuse si le contexte ne repond pas
+    SEUIL_DISTANCE = 0.55
 
     def __init__(self, api_key, model=MODELE):
         self.client = Groq(api_key=api_key)
