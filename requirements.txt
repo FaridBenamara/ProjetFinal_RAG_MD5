@@ -1,0 +1,7 @@
+sentence-transformers
+chromadb
+groq
+requests
+python-dotenv
+flask
+pytest
