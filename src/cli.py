@@ -1,6 +1,7 @@
 import os
 
 from dotenv import load_dotenv
+from groq import GroqError
 
 from src.generator import Generator
 from src.retriever import Retriever
@@ -17,12 +18,24 @@ class ChatCLI:
         print(f"Assistant Code du travail — corpus du {self.retriever.date_corpus()}")
         print("Posez votre question (/quit pour quitter)")
         while True:
-            question = input("\n> ").strip()
+            try:
+                question = input("\n> ").strip()
+            except (KeyboardInterrupt, EOFError):
+                print("\nAu revoir.")
+                break
             if question == "/quit":
                 print("Au revoir.")
                 break
             if question:
-                self._repondre(question)
+                self._repondre_sans_planter(question)
+
+    def _repondre_sans_planter(self, question):
+        # une erreur Groq (reseau, quota, cle) ne doit pas tuer la session
+        try:
+            self._repondre(question)
+        except GroqError as erreur:
+            print(f"\nErreur lors de l'appel au modèle : {erreur}")
+            print("Réessayez, ou vérifiez la clé GROQ_API_KEY et votre connexion.")
 
     def _repondre(self, question):
         chunks = self.retriever.rechercher(question)
