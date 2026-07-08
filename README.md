@@ -23,7 +23,7 @@ Dans cet ordre (le corpus doit exister avant d'indexer, la base avant d'interrog
 python -m src.build_corpus      # 1. extraction Légifrance -> data/corpus.json (une fois)
 python -m src.indexer           # 2. indexation -> ./chroma_db/ (une fois)
 pytest tests/ -v                # 3. validation du retrieval
-python -m src.cli               # 4. boucle question-réponse (à venir)
+python -m src.cli               # 4. boucle question-réponse (/quit pour sortir)
 ```
 
 Au lancement l'application recharge la base existante, elle ne réindexe jamais. Pour
@@ -108,8 +108,16 @@ juridique... » est concaténé par le code du Generator à chaque réponse. Un 
   minimum de croissance » sort en rang 1 ; pareil pour « CDD ». Une reformulation de la
   question par LLM est la piste envisagée.
 - Les questions par numéro d'article échouent en vectoriel pur (rang > 30), voir Q2.
-- Les distances séparent bien les questions du domaine (0,17 à 0,28 sur nos tests) des
-  questions hors sujet (0,56 à 0,88). On a donc calibré le seuil de refus vers 0,45.
+- Sur nos tests, les questions du domaine restent sous 0,54 de distance (0,17 à 0,28
+  quand la formulation est proche du texte, jusqu'à 0,53 quand elle s'en éloigne) et
+  les questions hors sujet démarrent à 0,56. Le seuil de refus est à 0,55 : il n'écarte
+  que le clairement hors sujet, et dans la zone grise c'est le prompt qui refuse quand
+  le contexte ne répond pas. Un premier seuil à 0,45 refusait à tort des questions
+  légitimes (« comment fonctionne la rupture conventionnelle ? » est à 0,506) — trouvé
+  en session manuelle, recalibré.
+- Les questions en langage très familier (« je travaille 45h en CDI j'ai le droit ? »)
+  retrouvent mal leurs articles (distances 0,66 et plus, chunks non pertinents) : un
+  seuil ne peut rien y faire, c'est la reformulation de la question qui doit les traiter.
 - Les articles les plus longs dépassent la fenêtre du modèle d'embedding et sont
   tronqués à l'encodage (environ 10 % des chunks). Pas d'impact constaté sur nos tests
   de validation ; si ça en avait un, la piste serait de découper ces articles par

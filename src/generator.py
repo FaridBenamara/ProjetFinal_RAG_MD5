@@ -14,8 +14,10 @@ class Generator:
         "ou l'inspection du travail pour votre situation personnelle."
     )
     REFUS = "Je ne trouve pas cette information dans ma base."
-    # mesure sur le corpus : questions du domaine 0.17-0.38, hors sujet 0.56-0.88
-    SEUIL_DISTANCE = 0.45
+    # mesure sur le corpus : questions du domaine <= 0.54, hors sujet >= 0.56.
+    # le seuil n'ecarte que le clairement hors sujet ; dans la zone grise,
+    # c'est le prompt qui refuse si le contexte ne repond pas
+    SEUIL_DISTANCE = 0.55
 
     def __init__(self, api_key, model=MODELE):
         self.client = Groq(api_key=api_key)
@@ -24,12 +26,20 @@ class Generator:
     def repondre(self, question, chunks):
         # le refus hors corpus est decide par le code, avant tout appel au LLM
         if self._hors_corpus(chunks):
-            return {"reponse": self.REFUS, "articles": [], "avertissement": self.AVERTISSEMENT}
+            return self._refus()
+        reponse = self._appeler_llm(question, chunks)
+        # le LLM peut aussi refuser (contexte remonte mais hors sujet) :
+        # dans ce cas les chunks n'ont pas servi, on n'affiche pas de sources
+        if self.REFUS in reponse:
+            return self._refus()
         return {
-            "reponse": self._appeler_llm(question, chunks),
+            "reponse": reponse,
             "articles": [num for chunk in chunks for num in chunk["nums"]],
             "avertissement": self.AVERTISSEMENT,
         }
+
+    def _refus(self):
+        return {"reponse": self.REFUS, "articles": [], "avertissement": self.AVERTISSEMENT}
 
     def _hors_corpus(self, chunks):
         return not chunks or min(c["distance"] for c in chunks) > self.SEUIL_DISTANCE
