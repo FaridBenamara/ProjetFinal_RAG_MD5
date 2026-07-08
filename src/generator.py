@@ -22,17 +22,26 @@ class Generator:
         "Cet assistant ne fournit pas de conseil juridique. Consultez un avocat "
         "ou l'inspection du travail pour votre situation personnelle."
     )
+    REFUS = "Je ne trouve pas cette information dans ma base."
+    # mesure sur le corpus : questions du domaine 0.17-0.38, hors sujet 0.56-0.88
+    SEUIL_DISTANCE = 0.45
 
     def __init__(self, api_key, model=MODELE):
         self.client = Groq(api_key=api_key)
         self.model = model
 
     def repondre(self, question, chunks):
+        # le refus hors corpus est decide par le code, avant tout appel au LLM
+        if self._hors_corpus(chunks):
+            return {"reponse": self.REFUS, "articles": [], "avertissement": self.AVERTISSEMENT}
         return {
             "reponse": self._appeler_llm(question, chunks),
             "articles": [num for chunk in chunks for num in chunk["nums"]],
             "avertissement": self.AVERTISSEMENT,
         }
+
+    def _hors_corpus(self, chunks):
+        return not chunks or min(c["distance"] for c in chunks) > self.SEUIL_DISTANCE
 
     def _appeler_llm(self, question, chunks):
         completion = self.client.chat.completions.create(
