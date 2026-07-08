@@ -102,7 +102,9 @@ def _parse_num(num):
 def _nettoyer_html(content):
     texte = re.sub(r"<[^>]+>", " ", content)
     texte = html.unescape(texte)
-    return re.sub(r"\s+", " ", texte).strip()
+    texte = re.sub(r"\s+", " ", texte).strip()
+    # les renvois ("<a>L. 1234-5</a> .") laissent un espace parasite avant la ponctuation
+    return re.sub(r"\s+([,.;:)])", r"\1", texte)
 
 
 def _epoch_vers_date(epoch_ms):
