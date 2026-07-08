@@ -2,12 +2,13 @@ import html
 import json
 import re
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 CODE_TRAVAIL_CID = "LEGITEXT000006072050"
 CACHE_ARBRE = Path("data/toc_raw.json")
 
-# plages du tableau du sujet, ordre du plus specifique au plus general
+# plages du tableau du sujet, du plus specifique au plus general
 # (rupture conventionnelle est un sous-cas de licenciement dans le code)
 THEMES = [
     ("Rupture conventionnelle", "L1237-11", "L1237-19"),
@@ -40,37 +41,28 @@ class CorpusBuilder:
 
     def construire(self):
         arbre = self._charger_arbre()
-        articles = self._extraire_articles(arbre)
-        documents = self._filtrer_et_convertir(articles)
+        documents = []
+        for article in self._extraire_articles(arbre):
+            theme = self._trouver_theme(article)
+            if theme:
+                documents.append(self._vers_document(article, theme))
         self._ecrire(documents)
         return documents
 
     def _charger_arbre(self):
         if CACHE_ARBRE.exists():
             return json.loads(CACHE_ARBRE.read_text(encoding="utf-8"))
-
         arbre = self.client.appeler("/consult/legiPart", {"textId": CODE_TRAVAIL_CID})
-        CACHE_ARBRE.parent.mkdir(parents=True, exist_ok=True)
         CACHE_ARBRE.write_text(json.dumps(arbre, ensure_ascii=False), encoding="utf-8")
         return arbre
 
-    def _extraire_articles(self, noeud, out=None):
-        if out is None:
-            out = []
-        out.extend(noeud.get("articles") or [])
+    def _extraire_articles(self, noeud):
+        articles = list(noeud.get("articles") or [])
         for section in noeud.get("sections") or []:
-            self._extraire_articles(section, out)
-        return out
+            articles.extend(self._extraire_articles(section))
+        return articles
 
-    def _filtrer_et_convertir(self, articles):
-        documents = []
-        for article in articles:
-            theme = self._theme_valide(article)
-            if theme:
-                documents.append(self._vers_document(article, theme))
-        return documents
-
-    def _theme_valide(self, article):
+    def _trouver_theme(self, article):
         if article["etat"] != "VIGUEUR" or not article["num"].startswith("L"):
             return None
         num = _parse_num(article["num"])
@@ -90,7 +82,6 @@ class CorpusBuilder:
         )
 
     def _ecrire(self, documents):
-        Path(self.output_path).parent.mkdir(parents=True, exist_ok=True)
         contenu = json.dumps([asdict(d) for d in documents], ensure_ascii=False, indent=2)
         Path(self.output_path).write_text(contenu, encoding="utf-8")
 
@@ -108,8 +99,6 @@ def _nettoyer_html(content):
 
 
 def _epoch_vers_date(epoch_ms):
-    from datetime import datetime, timezone
-
     return datetime.fromtimestamp(epoch_ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d")
 
 
