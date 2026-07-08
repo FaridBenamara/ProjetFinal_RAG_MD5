@@ -23,7 +23,7 @@ Dans cet ordre (le corpus doit exister avant d'indexer, la base avant d'interrog
 python -m src.build_corpus      # 1. extraction Légifrance -> data/corpus.json (une fois)
 python -m src.indexer           # 2. indexation -> ./chroma_db/ (une fois)
 pytest tests/ -v                # 3. validation du retrieval
-python -m src.cli               # 4. boucle question-réponse (à venir)
+python -m src.cli               # 4. boucle question-réponse (/quit pour sortir)
 ```
 
 Au lancement l'application recharge la base existante, elle ne réindexe jamais. Pour
