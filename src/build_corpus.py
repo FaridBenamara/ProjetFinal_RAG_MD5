@@ -46,6 +46,7 @@ class CorpusBuilder:
             theme = self._trouver_theme(article)
             if theme:
                 documents.append(self._vers_document(article, theme))
+        documents = self._dedupliquer(documents)
         self._ecrire(documents)
         return documents
 
@@ -80,6 +81,13 @@ class CorpusBuilder:
             chemin_section=" > ".join(t.strip() for t in article["pathTitle"]),
             date_version=_epoch_vers_date(article["dateDebut"]),
         )
+
+    def _dedupliquer(self, documents):
+        # certains articles sont rattaches a deux sections dans l'arbre Legifrance
+        vus = {}
+        for doc in documents:
+            vus.setdefault(doc.id, doc)
+        return list(vus.values())
 
     def _ecrire(self, documents):
         contenu = json.dumps([asdict(d) for d in documents], ensure_ascii=False, indent=2)
