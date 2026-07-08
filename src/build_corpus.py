@@ -2,7 +2,7 @@ import html
 import json
 import re
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 CODE_TRAVAIL_CID = "LEGITEXT000006072050"
@@ -51,9 +51,11 @@ class CorpusBuilder:
         return documents
 
     def _charger_arbre(self):
+        # pour rafraichir le corpus : supprimer le cache puis relancer
         if CACHE_ARBRE.exists():
             return json.loads(CACHE_ARBRE.read_text(encoding="utf-8"))
-        arbre = self.client.appeler("/consult/legiPart", {"textId": CODE_TRAVAIL_CID})
+        payload = {"textId": CODE_TRAVAIL_CID, "date": date.today().isoformat()}
+        arbre = self.client.appeler("/consult/legiPart", payload)
         CACHE_ARBRE.write_text(json.dumps(arbre, ensure_ascii=False), encoding="utf-8")
         return arbre
 
@@ -90,8 +92,18 @@ class CorpusBuilder:
         return list(vus.values())
 
     def _ecrire(self, documents):
-        contenu = json.dumps([asdict(d) for d in documents], ensure_ascii=False, indent=2)
+        corpus = {
+            "date_extraction": self._date_extraction(),
+            "documents": [asdict(d) for d in documents],
+        }
+        contenu = json.dumps(corpus, ensure_ascii=False, indent=2)
         Path(self.output_path).write_text(contenu, encoding="utf-8")
+
+    def _date_extraction(self):
+        # date de telechargement de l'arbre, pas du rebuild : le corpus n'est
+        # pas plus frais que les donnees dont il vient
+        telecharge_le = CACHE_ARBRE.stat().st_mtime
+        return datetime.fromtimestamp(telecharge_le, tz=timezone.utc).strftime("%Y-%m-%d")
 
 
 def _parse_num(num):
@@ -124,6 +136,7 @@ if __name__ == "__main__":
     documents = builder.construire()
 
     print(f"{len(documents)} articles extraits sur {len(THEMES)} themes")
+    print(f"date d'extraction : {builder._date_extraction()}")
     for doc in random.sample(documents, 10):
         print(f"\n[{doc.theme}] {doc.num} - {doc.chemin_section}")
         print(doc.texte[:200])
