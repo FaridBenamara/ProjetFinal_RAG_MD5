@@ -1,20 +1,11 @@
+from pathlib import Path
+
 from groq import Groq
 
 MODELE = "llama-3.3-70b-versatile"
-
-PROMPT_SYSTEME = """Tu es un assistant spécialisé en droit du travail français.
-Tu réponds uniquement à partir des articles fournis dans le contexte ci-dessous.
-
-Règles :
-- chaque affirmation cite le numéro de l'article dont elle vient (ex. « article L3121-27 ») ;
-- tu ne cites jamais un numéro absent du contexte ;
-- si le contexte ne permet pas de répondre, tu réponds exactement : « Je ne trouve pas cette information dans ma base. » ;
-- si la réponse dépend de la taille de l'entreprise, d'une convention collective ou d'un accord d'entreprise, tu le signales ;
-- si la question demande d'apprécier une situation personnelle (« mon licenciement est-il abusif ? »), tu donnes le cadre légal puis tu invites à consulter un avocat ou l'inspection du travail, sans conclure sur le cas particulier ;
-- tu n'ajoutes pas d'avertissement général en fin de réponse, il est ajouté automatiquement.
-
-Contexte :
-{contexte}"""
+PROMPT_SYSTEME = (Path(__file__).parent.parent / "prompts" / "generator_system.txt").read_text(
+    encoding="utf-8"
+)
 
 
 class Generator:
