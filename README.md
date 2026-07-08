@@ -1,9 +1,10 @@
 # Assistant Code du travail (RAG)
 
-Assistant juridique en droit du travail français, construit en RAG « from scratch »
-(sans LangChain ni LlamaIndex) sur le corpus Légifrance. Il répond en langage naturel
-en citant systématiquement les numéros d'articles sur lesquels il s'appuie, et refuse
-de répondre quand l'information n'est pas dans sa base.
+Assistant de questions-réponses sur le droit du travail français. Le corpus vient de
+l'API Légifrance, la recherche est vectorielle (sentence-transformers + ChromaDB), la
+génération passe par Groq. Pas de LangChain ni LlamaIndex : chaque brique est écrite à
+la main. Chaque réponse cite les numéros d'articles utilisés, et quand la question sort
+du corpus le système le dit au lieu d'inventer.
 
 ## Installation
 
@@ -16,7 +17,7 @@ cp .env.example .env            # puis renseigner les clés PISTE et GROQ
 
 ## Lancement
 
-L'ordre compte : le corpus doit exister avant l'indexation, la base avant l'interrogation.
+Dans cet ordre (le corpus doit exister avant d'indexer, la base avant d'interroger) :
 
 ```bash
 python -m src.build_corpus      # 1. extraction Légifrance -> data/corpus.json (une fois)
@@ -25,90 +26,91 @@ pytest tests/ -v                # 3. validation du retrieval
 python -m src.cli               # 4. boucle question-réponse (à venir)
 ```
 
-Au lancement, l'application recharge la base persistée sans jamais réindexer.
-Pour rafraîchir le corpus : supprimer `data/toc_raw.json` (le cache de l'arbre
-Légifrance) puis relancer les étapes 1 et 2.
+Au lancement l'application recharge la base existante, elle ne réindexe jamais. Pour
+rafraîchir le corpus, supprimer `data/toc_raw.json` (le cache de l'arbre Légifrance)
+et relancer les étapes 1 et 2.
 
 ## Questions de réflexion
 
 ### 1. Granularité du chunking
 
-**Un article par chunk** : la traçabilité est parfaite (un chunk correspond à des
-numéros précis, cités sans ambiguïté) et la recherche est précise, mais les articles
-très courts donnent des chunks pauvres pour l'embedding, et le contexte des articles
-voisins qui se citent entre eux est perdu.
+Indexer chaque article séparément donne une traçabilité nette : un chunk = un numéro,
+pas d'ambiguïté au moment de citer. L'inconvénient, ce sont les articles très courts
+(certains font deux lignes) qui donnent des embeddings pauvres, et la perte du contexte
+quand un article renvoie à son voisin.
 
-**Un chunk par section** : le contexte est riche, mais un chunk mélange plusieurs
-numéros — au moment de citer, le risque d'attribuer la mauvaise référence est réel,
-et les gros chunks diluent la pertinence de la recherche.
+Regrouper par section, c'est l'inverse : plus de contexte, mais plusieurs numéros par
+chunk, donc un vrai risque que le LLM attribue une affirmation au mauvais article. Pour
+un assistant juridique c'est le pire défaut possible. Et les chunks deviennent longs,
+ce qui dilue la recherche.
 
-**Notre choix : hybride.** Un article = un chunk par défaut, et les articles de moins
-de 200 caractères sont fusionnés avec leur voisin de la même section. Chaque chunk est
-préfixé de son numéro et de sa section la plus fine (`Article L3121-1 (Sous-section 1 :
-Travail effectif.) : ...`). Sur notre corpus de 819 articles, cela donne 722 chunks dont
-81 regroupés, médiane 590 caractères. Aucun article n'est jamais coupé : on ne fait que
-fusionner des articles entiers, jamais découper.
+On est partis sur un entre-deux : un article = un chunk, sauf les articles de moins de
+200 caractères qu'on fusionne avec le chunk précédent de la même section. Chaque chunk
+commence par son numéro et sa section (`Article L3121-1 (Sous-section 1 : Travail
+effectif.) : ...`). Sur nos 819 articles ça donne 722 chunks, dont 81 regroupés,
+médiane 590 caractères. Aucun article n'est coupé : on fusionne des articles entiers,
+on ne découpe jamais.
 
 ### 2. Traçabilité
 
-Le numéro d'article est stocké **aux deux endroits**. Dans le texte embeddé, pour que
-« que dit L3121-1 ? » puisse matcher sémantiquement. Dans les métadonnées ChromaDB,
-pour afficher et filtrer les sources sans re-parser le texte.
+Le numéro est stocké aux deux endroits. Dans le texte embeddé, pour qu'une question du
+type « que dit L3121-1 ? » ait une chance de matcher. Dans les métadonnées ChromaDB,
+pour afficher les sources sans re-parser le texte.
 
-Pour que le LLM cite juste au lieu d'inventer : le contexte fourni au modèle est
-numéroté avec les métadonnées de chaque chunk, le prompt interdit de citer un numéro
-absent de ce contexte, et si la recherche ne remonte rien de pertinent le système
-répond « je ne trouve pas cette information dans ma base » — décision prise par le
-code (seuil de distance), pas laissée au modèle. En complément, la recherche hybride
-(jalon 6) récupère lexicalement les articles cités par leur numéro dans la question :
-nous avons mesuré que le vectoriel seul classe L3121-1 au-delà du rang 30 pour la
-question « que dit l'article L3121-1 ? ».
+Côté génération, le contexte envoyé au modèle est numéroté avec les métadonnées, et le
+prompt interdit de citer un numéro qui n'y figure pas. Si la recherche ne trouve rien
+d'assez proche, le code répond directement « je ne trouve pas cette information dans ma
+base » sans appeler le LLM — c'est un seuil de distance qui décide, pas le modèle.
+En pratique le vectoriel seul ne suffit pas pour les questions par numéro : on a mesuré
+que L3121-1 ressort au-delà du rang 30 sur « que dit l'article L3121-1 ? ». D'où la
+recherche hybride prévue au jalon 6 (détection du numéro par regex + récupération
+directe).
 
 ### 3. Fraîcheur
 
-Le corpus est une photo datée du droit en vigueur : l'extraction interroge Légifrance
-consolidé à la date du jour, ne garde que les articles à l'état VIGUEUR, et stocke
-deux dates — `date_version` par article (depuis quand sa rédaction s'applique) et
-`date_extraction` globale (dérivée de la date de téléchargement des données, pas du
-rebuild). Cette date est affichée **par le code** à chaque réponse, à côté de
-l'avertissement juridique : l'utilisateur sait toujours sur quel état du droit
-l'assistant s'appuie.
+Le corpus est une photo du droit en vigueur à une date donnée. L'extraction interroge
+Légifrance consolidé à la date du jour et ne garde que les articles à l'état VIGUEUR.
+On conserve deux dates : `date_version` pour chaque article (depuis quand sa rédaction
+s'applique) et `date_extraction` pour le corpus entier. Cette dernière est affichée
+avec chaque réponse, par le code qui assemble la réponse et pas par le prompt, pour que
+l'utilisateur sache toujours sur quel état du droit il s'appuie.
 
-Le rafraîchissement est volontairement manuel (supprimer le cache, relancer
-l'extraction puis l'indexation) : le droit du travail change quelques fois par an,
-pas chaque jour, et toute réindexation automatique au lancement est exclue. Un
-système qui dit honnêtement sa date vaut mieux qu'un système qui prétend être à jour.
+Le rafraîchissement reste une opération manuelle (supprimer le cache, relancer
+extraction et indexation). Le droit du travail bouge quelques fois par an, une
+réindexation automatique au lancement n'aurait aucun sens — et c'est de toute façon
+éliminatoire dans le cadre du projet.
 
 ### 4. Réponses conditionnelles
 
-Réponse générale assortie de réserves explicites, plutôt que question de clarification
-systématique (trop de friction pour une première réponse). Le prompt demande d'énoncer
-la règle de droit commun, puis de nommer les variables qui peuvent la changer quand les
-articles du contexte les mentionnent : taille de l'entreprise, convention collective,
-accord d'entreprise, ancienneté. L'utilisateur repart avec la règle générale et sait
-précisément ce qu'il doit vérifier pour sa situation.
+Beaucoup de réponses dépendent de la taille de l'entreprise, de la convention
+collective, de l'ancienneté. Poser une question de clarification à chaque fois rendrait
+l'assistant pénible, donc le choix est : réponse générale + réserves. Le prompt demande
+d'énoncer la règle de droit commun, puis de signaler explicitement les cas où les
+articles du contexte mentionnent une condition (seuil d'effectif, accord collectif...).
+L'utilisateur a la règle générale et sait ce qu'il doit vérifier pour son cas.
 
 ### 5. La frontière du conseil juridique
 
-Une question **factuelle** (« combien de jours de congés par an ? ») appelle une règle
-générale : le système répond et cite l'article. Une question d'**interprétation**
-(« mon licenciement est-il abusif ? ») demande de qualifier juridiquement une situation
-personnelle : le système donne le cadre légal applicable avec ses articles, mais refuse
-de trancher le cas particulier et oriente vers un avocat ou l'inspection du travail.
+« Combien de jours de congés par an ? » est une question factuelle : le Code y répond,
+on cite l'article. « Mon licenciement est-il abusif ? » demande de qualifier une
+situation personnelle : là le système donne le cadre légal (les articles qui
+s'appliquent) mais refuse de conclure sur le cas particulier et renvoie vers un avocat
+ou l'inspection du travail.
 
-Cette frontière est portée par le prompt (instructions et exemples), et la garantie
-finale est dans le code : l'avertissement « Cet assistant ne fournit pas de conseil
-juridique... » est ajouté par le Generator à chaque réponse, sans exception possible —
-une consigne de prompt peut être ignorée une fois sur dix, pas une concaténation.
+Cette distinction est décrite dans le prompt, avec des exemples. Mais la garantie
+finale ne repose pas dessus : l'avertissement « Cet assistant ne fournit pas de conseil
+juridique... » est concaténé par le code du Generator à chaque réponse. Un prompt peut
+être ignoré de temps en temps, une concaténation non.
 
-## Limites mesurées
+## Limites constatées
 
-- Le corpus ne contient pas les sigles : « SMIC » ne matche pas (« salaire minimum de
-  croissance » sort rang 1), « CDD » non plus. Piste : reformulation LLM de la question.
-- Les questions par numéro d'article échouent en vectoriel pur (rang > 30) : c'est la
-  recherche hybride du jalon 6 qui les prend en charge.
-- Les distances mesurées séparent nettement les questions dans le corpus (0,17–0,28)
-  des questions hors sujet (0,56–0,88) : le seuil de refus est calibré vers 0,45.
-- Environ 10 % des chunks dépassent la fenêtre du modèle d'embedding (les articles
-  les plus longs sont tronqués à l'encodage). Sans impact mesuré sur la validation ;
-  une découpe par alinéa des très longs articles est la piste si besoin.
+- Le corpus ne contient jamais les sigles. « SMIC » ne matche pas alors que « salaire
+  minimum de croissance » sort en rang 1 ; pareil pour « CDD ». Une reformulation de la
+  question par LLM est la piste envisagée.
+- Les questions par numéro d'article échouent en vectoriel pur (rang > 30), voir Q2.
+- Les distances séparent bien les questions du domaine (0,17 à 0,28 sur nos tests) des
+  questions hors sujet (0,56 à 0,88). On a donc calibré le seuil de refus vers 0,45.
+- Les articles les plus longs dépassent la fenêtre du modèle d'embedding et sont
+  tronqués à l'encodage (environ 10 % des chunks). Pas d'impact constaté sur nos tests
+  de validation ; si ça en avait un, la piste serait de découper ces articles par
+  alinéa.
