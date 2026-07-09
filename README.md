@@ -72,6 +72,13 @@ La base vectorielle est construite une fois au build (pas au lancement : au dém
 l'application recharge la base, conformément à la contrainte de persistance). Prévoir
 ~1 Go de RAM : le modèle d'embedding est chargé en mémoire au démarrage.
 
+Choix assumé : chaque déploiement ré-extrait Légifrance à sa date, le corpus déployé
+est donc toujours frais — mais il n'est pas octet pour octet celui du `corpus.json`
+commité et validé par les tests. Si le déterminisme devait primer sur la fraîcheur
+(déployé = testé), il suffirait de réduire la commande de build à
+`python -m src.indexer`, qui indexe le corpus commité ; le rafraîchissement
+redeviendrait alors un acte versionné (ré-extraction locale, tests, commit, push).
+
 ## Questions de réflexion
 
 ### 1. Granularité du chunking
