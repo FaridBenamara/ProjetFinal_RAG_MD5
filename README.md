@@ -1,10 +1,26 @@
 # Assistant Code du travail (RAG)
 
-Assistant de questions-réponses sur le droit du travail français. Le corpus vient de
-l'API Légifrance, la recherche est vectorielle (sentence-transformers + ChromaDB), la
-génération passe par Groq. Pas de LangChain ni LlamaIndex : chaque brique est écrite à
-la main. Chaque réponse cite les numéros d'articles utilisés, et quand la question sort
-du corpus le système le dit au lieu d'inventer.
+Assistant de questions-réponses sur le droit du travail français. Le corpus couvre
+l'intégralité du Code du travail en vigueur — parties législative et réglementaire,
+soit 11 592 articles extraits via l'API Légifrance. La recherche est vectorielle
+(sentence-transformers + ChromaDB), la génération passe par Groq. Pas de LangChain ni
+LlamaIndex : chaque brique est écrite à la main. Chaque réponse cite les numéros
+d'articles utilisés, et quand la question sort du corpus le système le dit au lieu
+d'inventer.
+
+## Le corpus
+
+Tous les articles à l'état VIGUEUR du Code du travail, sans filtre thématique : les
+huit thèmes du sujet sont donc couverts, et le reste aussi (repos dominical, travail
+de nuit, assurance chômage... des sujets que nos tests en conditions réelles ont fait
+remonter très vite). Les parties R et D apportent les modalités concrètes que la
+partie L ne donne pas — c'est R1234-4 qui contient le calcul de l'indemnité de
+licenciement, pas un article L.
+
+Deux défauts des données Légifrance sont corrigés à l'extraction : des articles
+rattachés à deux sections de l'arborescence (dédoublonnage par identifiant), et de
+rares articles avec deux versions simultanément « en vigueur » (on garde la rédaction
+la plus récente).
 
 ## Installation
 
@@ -45,11 +61,14 @@ un assistant juridique c'est le pire défaut possible. Et les chunks deviennent 
 ce qui dilue la recherche.
 
 On est partis sur un entre-deux : un article = un chunk, sauf les articles de moins de
-200 caractères qu'on fusionne avec le chunk précédent de la même section. Chaque chunk
-commence par son numéro et sa section (`Article L3121-1 (Sous-section 1 : Travail
-effectif.) : ...`). Sur nos 819 articles ça donne 722 chunks, dont 81 regroupés,
-médiane 590 caractères. Aucun article n'est coupé : on fusionne des articles entiers,
-on ne découpe jamais.
+200 caractères qu'on fusionne avec le chunk précédent de la même section, et les
+articles de plus de 2 000 caractères qu'on découpe en morceaux — toujours à une
+frontière de phrase, jamais au milieu (certaines annexes réglementaires font plus de
+100 000 caractères : un chunk pareil est inutile à l'embedding et hors de prix dans le
+contexte du LLM). Chaque chunk commence par son numéro et sa section (`Article L3121-1
+(Sous-section 1 : Travail effectif.) : ...`), et chaque morceau d'article découpé garde
+le numéro complet. Sur les 11 592 articles ça donne 10 767 chunks, dont 1 141
+regroupés, médiane 577 caractères, maximum 3 057.
 
 ### 2. Traçabilité
 
@@ -104,21 +123,19 @@ juridique... » est concaténé par le code du Generator à chaque réponse. Un 
 
 ## Limites constatées
 
-- Le corpus ne contient jamais les sigles. « SMIC » ne matche pas alors que « salaire
-  minimum de croissance » sort en rang 1 ; pareil pour « CDD ». Une reformulation de la
-  question par LLM est la piste envisagée.
 - Les questions par numéro d'article échouent en vectoriel pur (rang > 30), voir Q2.
-- Sur nos tests, les questions du domaine restent sous 0,54 de distance (0,17 à 0,28
-  quand la formulation est proche du texte, jusqu'à 0,53 quand elle s'en éloigne) et
-  les questions hors sujet démarrent à 0,56. Le seuil de refus est à 0,55 : il n'écarte
-  que le clairement hors sujet, et dans la zone grise c'est le prompt qui refuse quand
-  le contexte ne répond pas. Un premier seuil à 0,45 refusait à tort des questions
-  légitimes (« comment fonctionne la rupture conventionnelle ? » est à 0,506) — trouvé
-  en session manuelle, recalibré.
-- Les questions en langage très familier (« je travaille 45h en CDI j'ai le droit ? »)
-  retrouvent mal leurs articles (distances 0,66 et plus, chunks non pertinents) : un
-  seuil ne peut rien y faire, c'est la reformulation de la question qui doit les traiter.
-- Les articles les plus longs dépassent la fenêtre du modèle d'embedding et sont
-  tronqués à l'encodage (environ 10 % des chunks). Pas d'impact constaté sur nos tests
-  de validation ; si ça en avait un, la piste serait de découper ces articles par
-  alinéa.
+  C'est la recherche hybride (à venir) qui doit les prendre en charge.
+- Sur le corpus complet, les distances des questions hors sujet se resserrent : le
+  corpus contient du contenu fiscalo-adjacent (saisies sur salaire) et pénal (sanctions
+  du travail illégal) qui attire des questions d'autres codes sous le seuil de 0,55.
+  Le refus repose alors sur le second étage : le prompt, qui refuse quand le contexte
+  ne répond pas — vérifié sur dix questions piège (droit pénal, fiscal, consommation,
+  famille, route), toutes refusées.
+- Sur les sujets encombrés (licenciement : plusieurs centaines d'articles L et R), la
+  précision du retrieval dépend de la formulation. « Quel préavis pour un licenciement
+  sans faute grave ? » remonte L1234-1 en rang 2 ; « quel préavis pour deux ans
+  d'ancienneté ? » le laisse en rang 9. Un reranking par cross-encoder est la piste
+  identifiée si ce mode d'échec devenait fréquent (mesuré : 1 question sur 30).
+- La fenêtre du modèle d'embedding (~500 caractères utiles) reste plus courte que la
+  médiane des chunks : le début du chunk — numéro, section, premier alinéa — porte
+  l'essentiel du signal. Le découpage à 2 000 caractères borne l'effet.
