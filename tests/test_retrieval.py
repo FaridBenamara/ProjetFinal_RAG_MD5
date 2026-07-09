@@ -29,3 +29,24 @@ def test_article_attendu_dans_le_top5(retriever, question, article_attendu):
     assert article_attendu in nums_trouves, (
         f"{article_attendu} absent du top-5 pour « {question} » : {nums_trouves}"
     )
+
+
+@pytest.mark.parametrize(
+    "question,article_attendu",
+    [
+        ("Que dit l'article L3121-1 ?", "L3121-1"),
+        ("que dit l. 3121-27 ?", "L3121-27"),
+        ("Que contient R1234-4 ?", "R1234-4"),
+    ],
+)
+def test_question_par_numero_remonte_l_article_en_tete(retriever, question, article_attendu):
+    # le vectoriel pur classe ces articles au-dela du rang 30 : c'est la
+    # recherche hybride qui garantit leur presence en tete
+    chunks = retriever.rechercher_hybride(question, k=5)
+    assert article_attendu in chunks[0]["nums"], question
+
+
+def test_question_sans_numero_retombe_sur_le_vectoriel(retriever):
+    hybride = retriever.rechercher_hybride("Combien de jours de congés payés par mois ?", k=5)
+    vectoriel = retriever.rechercher("Combien de jours de congés payés par mois ?", k=5)
+    assert [c["id"] for c in hybride] == [c["id"] for c in vectoriel]
