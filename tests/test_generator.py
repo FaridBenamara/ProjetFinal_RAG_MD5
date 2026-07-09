@@ -22,3 +22,14 @@ def test_le_refus_est_decide_par_le_code_sur_le_seuil():
     assert generator._hors_corpus(chunks_lointains)
     assert not generator._hors_corpus([{"distance": 0.2, "nums": ["L1111-1"]}])
     assert generator._hors_corpus([])
+
+
+def test_la_confiance_vient_de_la_meilleure_distance():
+    chunks = [{"distance": 0.20, "nums": ["L1111-1"]}, {"distance": 0.50, "nums": ["L2222-2"]}]
+    assert generator._confiance(chunks) == 0.80
+
+
+def test_le_refus_porte_une_confiance_nulle():
+    resultat = generator._refus()
+    assert resultat["confiance"] == 0.0
+    assert resultat["confiance_faible"] is True
