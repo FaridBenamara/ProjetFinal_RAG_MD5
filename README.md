@@ -46,6 +46,32 @@ Au lancement l'application recharge la base existante, elle ne réindexe jamais.
 rafraîchir le corpus, supprimer `data/toc_raw.json` (le cache de l'arbre Légifrance)
 et relancer les étapes 1 et 2.
 
+## Frontend web
+
+```bash
+python -m src.app               # -> http://localhost:5000
+```
+
+Une page unique (`templates/index.html`, HTML/CSS/JS vanilla, aucun framework) : zone
+de chat, badges d'articles cliquables vers legifrance.gouv.fr, avertissement juridique
+et date du corpus sous chaque réponse. La route `POST /ask` renvoie `{"reponse",
+"articles", "avertissement", "date_corpus"}`. Le web passe par exactement le même
+chemin de code que la CLI — modération, reformulation, recherche hybride comprises.
+
+### Déploiement (Railway)
+
+Le dépôt contient un `Procfile` (gunicorn). Sur Railway : créer le service depuis le
+dépôt, définir les variables `GROQ_API_KEY`, `PISTE_CLIENT_ID` et
+`PISTE_CLIENT_SECRET`, et donner comme commande de build :
+
+```
+pip install -r requirements.txt && python -m src.build_corpus && python -m src.indexer
+```
+
+La base vectorielle est construite une fois au build (pas au lancement : au démarrage
+l'application recharge la base, conformément à la contrainte de persistance). Prévoir
+~1 Go de RAM : le modèle d'embedding est chargé en mémoire au démarrage.
+
 ## Questions de réflexion
 
 ### 1. Granularité du chunking
