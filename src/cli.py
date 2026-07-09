@@ -1,9 +1,11 @@
+import logging
 import os
 
 from dotenv import load_dotenv
 from groq import GroqError
 
 from src.generator import Generator
+from src.moderator import Moderator
 from src.reformulator import Reformulator
 from src.retriever import Retriever
 
@@ -11,10 +13,11 @@ from src.retriever import Retriever
 class ChatCLI:
     # boucle question-reponse en terminal, /quit pour sortir
 
-    def __init__(self, retriever, generator, reformulator):
+    def __init__(self, retriever, generator, reformulator, moderator):
         self.retriever = retriever
         self.generator = generator
         self.reformulator = reformulator
+        self.moderator = moderator
 
     def lancer(self):
         print(f"Assistant Code du travail — corpus du {self.retriever.date_corpus()}")
@@ -40,6 +43,13 @@ class ChatCLI:
             print("Réessayez, ou vérifiez la clé GROQ_API_KEY et votre connexion.")
 
     def _repondre(self, question):
+        # le moderateur passe en premier : une question rejetee n'entre
+        # jamais dans le retrieval ni dans le prompt du generateur
+        verdict = self.moderator.verifier(question)
+        if verdict["classification"] != "LEGITIME":
+            print(f"\n{Moderator.REFUS[verdict['classification']]}")
+            print(f"\n{self.generator.AVERTISSEMENT}")
+            return
         # la recherche se fait sur la question reformulee en vocabulaire
         # juridique, la reponse porte sur la question originale
         reformulee = self.reformulator.reformuler(question)
@@ -63,6 +73,9 @@ class ChatCLI:
 
 if __name__ == "__main__":
     load_dotenv()
+    # les verdicts de moderation sont logges, le reste reste silencieux
+    logging.basicConfig(level=logging.WARNING, format="[%(levelname)s] %(message)s")
+    logging.getLogger("src.moderator").setLevel(logging.INFO)
     cle = os.environ["GROQ_API_KEY"]
-    cli = ChatCLI(Retriever(), Generator(cle), Reformulator(cle))
+    cli = ChatCLI(Retriever(), Generator(cle), Reformulator(cle), Moderator(cle))
     cli.lancer()
