@@ -54,6 +54,7 @@ class ChatCLI:
         if resultat["articles"]:
             print(f"\nSources : {', '.join(resultat['articles'])}")
         print(f"\n{resultat['avertissement']}")
+        print(f"(corpus Légifrance du {self.retriever.date_corpus()})")
 
 
 if __name__ == "__main__":
