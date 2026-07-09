@@ -27,16 +27,18 @@ class WebApp:
         return render_template("index.html", date_corpus=self.retriever.date_corpus())
 
     def repondre(self):
-        question = (request.get_json(silent=True) or {}).get("question", "").strip()
+        corps = request.get_json(silent=True) or {}
+        question = corps.get("question", "").strip()
         if not question:
             return jsonify({"erreur": "question manquante"}), 400
+        historique = [tuple(echange[:2]) for echange in corps.get("historique", [])[-3:]]
         # une panne Groq (quota, reseau) ne doit pas finir en 500 brut
         try:
-            return self._traiter(question)
+            return self._traiter(question, historique)
         except GroqError:
             return jsonify({"erreur": "service momentanément indisponible"}), 503
 
-    def _traiter(self, question):
+    def _traiter(self, question, historique):
         verdict = self.moderator.verifier(question)
         if verdict["classification"] != "LEGITIME":
             resultat = {
@@ -47,6 +49,7 @@ class WebApp:
                 "confiance_faible": True,
             }
         else:
+            question = self.reformulator.contextualiser(question, historique)
             reformulee = self.reformulator.reformuler(question)
             chunks = self.retriever.rechercher_hybride(
                 question, k=10, question_vectorielle=reformulee

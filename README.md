@@ -221,6 +221,17 @@ mesurée sur notre corpus, les questions bien couvertes étant à 0,38 ou moins 
 réponse est marquée « indices faibles, à confirmer ». Le refus pur reste géré par le
 seuil de 0,55 (voir Limites).
 
+### Historique de conversation
+
+Les trois derniers échanges sont conservés (côté CLI dans la boucle, côté web dans la
+page). Quand une question de suivi arrive (« et pour un CDD ? », « elle peut être
+renouvelée ? »), un appel LLM court la réécrit en question autonome à partir de
+l'historique — « Quelle est la durée maximale de la période d'essai en CDD ? » — et
+c'est cette question autonome qui traverse tout le pipeline (recherche, génération,
+historique). Une question déjà autonome est recopiée telle quelle, et sans historique
+l'étape est sautée : aucun coût sur la première question. Comme la reformulation,
+l'appel tourne sur le petit modèle et retombe sur la question brute en cas de panne.
+
 ### Suivi des renvois entre articles
 
 Les articles de loi se citent entre eux (« au sens de l'article L. 1121-2... ») mais

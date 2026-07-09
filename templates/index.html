@@ -220,6 +220,7 @@
 </footer>
 
 <script>
+  const historique = [];   // trois derniers echanges, pour « et pour un CDD ? »
   const fil = document.getElementById("fil");
   const zone = document.getElementById("zone");
   const formulaire = document.getElementById("formulaire");
@@ -245,10 +246,10 @@
       const reponse = await fetch("/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question })
+        body: JSON.stringify({ question, historique })
       });
       if (!reponse.ok) throw new Error("HTTP " + reponse.status);
-      afficherReponse(await reponse.json());
+      afficherReponse(question, await reponse.json());
     } catch (erreur) {
       ajouterMessage("assistant erreur", "Le service est momentanément indisponible. Réessayez dans un instant.");
     } finally {
@@ -258,8 +259,10 @@
     }
   });
 
-  function afficherReponse(donnees) {
+  function afficherReponse(question, donnees) {
     const bulle = ajouterMessage("assistant", donnees.reponse);
+    historique.push([question, donnees.reponse]);
+    if (historique.length > 3) historique.shift();
 
     if (donnees.articles && donnees.articles.length) {
       const sources = document.createElement("div");
