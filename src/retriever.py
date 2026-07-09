@@ -8,6 +8,8 @@ from src.indexer import COLLECTION
 # L. 3121-1, l3121-1, R1234-4... — le point et l'espace apres la lettre sont
 # des graphies courantes dans les questions
 NUMERO_ARTICLE = re.compile(r"\b([LRD])\.?\s?(\d{1,4}(?:-\d+)*)\b", re.IGNORECASE)
+# plafond d'articles ajoutes au contexte en suivant les renvois des chunks
+MAX_RENVOIS = 4
 
 
 class Retriever:
@@ -38,7 +40,31 @@ class Retriever:
         # vectorielle (sur la question reformulee le cas echeant) complete
         lexicaux = self._par_numeros(question)
         vectoriels = self.rechercher(question_vectorielle or question, k)
-        return self._fusionner(lexicaux, vectoriels, k)
+        fusion = self._fusionner(lexicaux, vectoriels, k)
+        return fusion + self._suivre_renvois(fusion)
+
+    def _suivre_renvois(self, chunks):
+        # les articles se citent entre eux (« au sens de l'article L. 1121-2 »)
+        # mais le voisin cite n'est pas dans le chunk : on l'ajoute au contexte.
+        # il herite de la distance du chunk qui le cite, pour ne pas fausser
+        # le seuil de refus du generateur
+        presents = {num for chunk in chunks for num in chunk["nums"]}
+        renvois = []
+        for chunk in chunks:
+            for lettre, chiffres in NUMERO_ARTICLE.findall(chunk["texte"]):
+                num = f"{lettre.upper()}{chiffres}"
+                if num in presents or num not in self._ids_par_num:
+                    continue
+                presents.add(num)
+                cible = self._chunk_par_id(self._ids_par_num[num][0], chunk["distance"])
+                renvois.append(cible)
+                if len(renvois) == MAX_RENVOIS:
+                    return renvois
+        return renvois
+
+    def _chunk_par_id(self, id_, distance):
+        resultat = self.collection.get(ids=[id_], include=["documents", "metadatas"])
+        return self._vers_chunk(id_, resultat["documents"][0], resultat["metadatas"][0], distance)
 
     def date_corpus(self):
         return self.collection.metadata["date_extraction"]
