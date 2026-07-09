@@ -201,6 +201,26 @@ Deux choix à défendre :
 Bonus constaté : « Compare L1234-1 et L1237-13 » produit une synthèse comparative
 correcte des deux articles — le mode comparaison du sujet, obtenu sans code dédié.
 
+### Mode comparaison
+
+L'embedding d'une question comparative entière (« quelle différence entre la rupture
+conventionnelle et le licenciement économique ? ») est une moyenne floue des deux
+notions, qui ne colle bien à aucune : mesuré, le vectoriel simple ne remontait aucun
+article de rupture conventionnelle et un seul de licenciement économique. Quand la
+question suit une forme comparative explicite (regex : « différence entre X et Y »,
+« comparer X et Y »...), chaque notion est cherchée séparément avec la moitié du
+budget de chunks, puis les contextes sont réunis — après quoi la synthèse comparative
+est demandée normalement au modèle. Résultat sur le même exemple : cinq articles de
+rupture conventionnelle et huit de licenciement économique dans le contexte.
+
+### Score de confiance
+
+La similarité du meilleur chunk (1 − distance cosinus) est affichée avec chaque
+réponse, en CLI comme sur le web. Sous 0,45 de distance restante — la zone incertaine
+mesurée sur notre corpus, les questions bien couvertes étant à 0,38 ou moins — la
+réponse est marquée « indices faibles, à confirmer ». Le refus pur reste géré par le
+seuil de 0,55 (voir Limites).
+
 ### Suivi des renvois entre articles
 
 Les articles de loi se citent entre eux (« au sens de l'article L. 1121-2... ») mais

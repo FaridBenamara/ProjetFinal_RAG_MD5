@@ -10,6 +10,12 @@ from src.indexer import COLLECTION
 NUMERO_ARTICLE = re.compile(r"\b([LRD])\.?\s?(\d{1,4}(?:-\d+)*)\b", re.IGNORECASE)
 # plafond d'articles ajoutes au contexte en suivant les renvois des chunks
 MAX_RENVOIS = 4
+# « quelle difference entre X et Y ? », « comparer X et Y »... : chaque notion
+# est cherchee separement, sinon l'embedding moyen des deux ne colle a aucune
+COMPARAISON = re.compile(
+    r"(?:diff[ée]rences?\s+entre|comparaison\s+entre|comparez?|comparer)\s+(.+?)\s+(?:et|avec)\s+(.+?)\s*\??$",
+    re.IGNORECASE,
+)
 
 
 class Retriever:
@@ -39,9 +45,17 @@ class Retriever:
         # les articles cites par leur numero remontent d'office ; la recherche
         # vectorielle (sur la question reformulee le cas echeant) complete
         lexicaux = self._par_numeros(question)
-        vectoriels = self.rechercher(question_vectorielle or question, k)
+        vectoriels = self._vectoriels(question_vectorielle or question, k)
         fusion = self._fusionner(lexicaux, vectoriels, k)
         return fusion + self._suivre_renvois(fusion)
+
+    def _vectoriels(self, question, k):
+        notions = COMPARAISON.search(question)
+        if not notions:
+            return self.rechercher(question, k)
+        # comparaison : la moitie du contexte pour chacune des deux notions
+        moitie = max(k // 2, 2)
+        return self.rechercher(notions.group(1), moitie) + self.rechercher(notions.group(2), moitie)
 
     def _suivre_renvois(self, chunks):
         # les articles se citent entre eux (« au sens de l'article L. 1121-2 »)
