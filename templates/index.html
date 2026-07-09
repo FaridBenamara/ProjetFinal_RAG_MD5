@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Assistant Code du travail</title>
+<style>
+  :root {
+    --bleu: #000091;
+    --bleu-clair: #2323b0;
+    --encre: #1e1e2e;
+    --gris: #6a6a7d;
+    --fond: #f4f5fa;
+    --carte: #ffffff;
+    --bordure: #e3e4ee;
+    --rouge: #c9191e;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+    background: var(--fond);
+    color: var(--encre);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    background: var(--bleu);
+    color: #fff;
+    padding: 14px 22px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    box-shadow: 0 2px 12px rgba(0, 0, 145, .25);
+  }
+  header .titre { display: flex; align-items: center; gap: 12px; }
+  header .marianne {
+    width: 34px; height: 34px; border-radius: 8px;
+    background: #fff; color: var(--bleu);
+    display: grid; place-items: center;
+    font-size: 19px; font-weight: 700;
+  }
+  header h1 { font-size: 17px; font-weight: 650; letter-spacing: .2px; }
+  header p { font-size: 12px; opacity: .75; margin-top: 1px; }
+  .badge-corpus {
+    font-size: 12px;
+    background: rgba(255,255,255,.14);
+    border: 1px solid rgba(255,255,255,.3);
+    padding: 5px 12px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+
+  main {
+    flex: 1;
+    overflow-y: auto;
+    padding: 26px 18px 10px;
+  }
+  .fil { max-width: 780px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+
+  .accueil { text-align: center; padding: 40px 10px 10px; }
+  .accueil .icone { font-size: 42px; }
+  .accueil h2 { font-size: 20px; margin: 12px 0 6px; }
+  .accueil p { color: var(--gris); font-size: 14px; max-width: 460px; margin: 0 auto; }
+  .suggestions {
+    display: flex; flex-wrap: wrap; gap: 10px;
+    justify-content: center; margin-top: 22px;
+  }
+  .suggestions button {
+    font: inherit; font-size: 13px;
+    background: var(--carte); color: var(--bleu);
+    border: 1px solid var(--bordure);
+    border-radius: 999px;
+    padding: 9px 16px;
+    cursor: pointer;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .suggestions button:hover { border-color: var(--bleu); box-shadow: 0 2px 8px rgba(0,0,145,.10); }
+
+  .message { display: flex; animation: apparait .25s ease-out; }
+  @keyframes apparait { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; } }
+  .message.utilisateur { justify-content: flex-end; }
+  .bulle {
+    max-width: 82%;
+    padding: 12px 16px;
+    border-radius: 14px;
+    font-size: 14.5px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+  .utilisateur .bulle {
+    background: var(--bleu);
+    color: #fff;
+    border-bottom-right-radius: 4px;
+  }
+  .assistant .bulle {
+    background: var(--carte);
+    border: 1px solid var(--bordure);
+    border-bottom-left-radius: 4px;
+    box-shadow: 0 1px 4px rgba(30,30,46,.05);
+  }
+
+  .sources { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .sources .etiquette { font-size: 11.5px; color: var(--gris); margin-right: 2px; }
+  .sources a {
+    font-size: 12px; font-weight: 600;
+    color: var(--bleu);
+    background: #eef0fb;
+    border: 1px solid #d5d9f2;
+    text-decoration: none;
+    padding: 3px 10px;
+    border-radius: 999px;
+    transition: background .15s;
+  }
+  .sources a:hover { background: #dfe3f8; }
+
+  .confiance { margin-top: 9px; font-size: 11.5px; color: var(--gris); }
+  .confiance.faible { color: #b45309; font-weight: 600; }
+
+  .avertissement {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--bordure);
+    font-size: 12px;
+    color: var(--gris);
+    display: flex;
+    gap: 7px;
+    align-items: baseline;
+  }
+  .avertissement::before { content: "⚖"; }
+  .date-reponse { font-size: 11px; color: var(--gris); margin-top: 5px; opacity: .8; }
+
+  .frappe .bulle { display: flex; gap: 5px; padding: 16px 18px; }
+  .frappe .point {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--gris);
+    animation: pulse 1.2s infinite;
+  }
+  .frappe .point:nth-child(2) { animation-delay: .2s; }
+  .frappe .point:nth-child(3) { animation-delay: .4s; }
+  @keyframes pulse { 0%, 60%, 100% { opacity: .25; } 30% { opacity: 1; } }
+
+  .erreur .bulle { border-color: var(--rouge); color: var(--rouge); background: #fdf2f2; }
+
+  footer {
+    padding: 14px 18px 18px;
+    background: linear-gradient(transparent, var(--fond) 40%);
+  }
+  form {
+    max-width: 780px;
+    margin: 0 auto;
+    display: flex;
+    gap: 10px;
+    background: var(--carte);
+    border: 1px solid var(--bordure);
+    border-radius: 14px;
+    padding: 8px;
+    box-shadow: 0 4px 18px rgba(30,30,46,.08);
+  }
+  form:focus-within { border-color: var(--bleu-clair); }
+  input {
+    flex: 1;
+    font: inherit;
+    font-size: 14.5px;
+    border: none;
+    outline: none;
+    padding: 8px 10px;
+    background: transparent;
+  }
+  form button {
+    font: inherit; font-size: 14px; font-weight: 600;
+    background: var(--bleu); color: #fff;
+    border: none; border-radius: 10px;
+    padding: 10px 20px;
+    cursor: pointer;
+    transition: background .15s;
+  }
+  form button:hover:not(:disabled) { background: var(--bleu-clair); }
+  form button:disabled { opacity: .45; cursor: default; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="titre">
+    <div class="marianne">⚖</div>
+    <div>
+      <h1>Assistant Code du travail</h1>
+      <p>Réponses sourcées, articles à l'appui</p>
+    </div>
+  </div>
+  <span class="badge-corpus">Corpus Légifrance du {{ date_corpus }}</span>
+</header>
+
+<main id="zone">
+  <div class="fil" id="fil">
+    <div class="accueil" id="accueil">
+      <div class="icone">📖</div>
+      <h2>Posez votre question sur le droit du travail</h2>
+      <p>Chaque réponse cite les articles du Code du travail sur lesquels elle s'appuie.
+         Quand l'information n'est pas dans le corpus, l'assistant le dit.</p>
+      <div class="suggestions">
+        <button>Quelle est la durée légale de travail hebdomadaire ?</button>
+        <button>Comment fonctionne la rupture conventionnelle ?</button>
+        <button>Que dit l'article L3121-1 ?</button>
+        <button>on peut me virer par sms ??</button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <form id="formulaire" autocomplete="off">
+    <input id="saisie" placeholder="Votre question… (les sigles et le langage courant sont compris)" maxlength="500">
+    <button id="envoyer" type="submit">Envoyer</button>
+  </form>
+</footer>
+
+<script>
+  const historique = [];   // trois derniers echanges, pour « et pour un CDD ? »
+  const fil = document.getElementById("fil");
+  const zone = document.getElementById("zone");
+  const formulaire = document.getElementById("formulaire");
+  const saisie = document.getElementById("saisie");
+  const envoyer = document.getElementById("envoyer");
+
+  document.querySelectorAll(".suggestions button").forEach(bouton =>
+    bouton.addEventListener("click", () => { saisie.value = bouton.textContent; formulaire.requestSubmit(); })
+  );
+
+  formulaire.addEventListener("submit", async evenement => {
+    evenement.preventDefault();
+    const question = saisie.value.trim();
+    if (!question || envoyer.disabled) return;
+
+    document.getElementById("accueil")?.remove();
+    ajouterMessage("utilisateur", question);
+    saisie.value = "";
+    envoyer.disabled = true;
+    const frappe = ajouterFrappe();
+
+    try {
+      const reponse = await fetch("/ask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question, historique })
+      });
+      if (!reponse.ok) throw new Error("HTTP " + reponse.status);
+      afficherReponse(question, await reponse.json());
+    } catch (erreur) {
+      ajouterMessage("assistant erreur", "Le service est momentanément indisponible. Réessayez dans un instant.");
+    } finally {
+      frappe.remove();
+      envoyer.disabled = false;
+      saisie.focus();
+    }
+  });
+
+  function afficherReponse(question, donnees) {
+    const bulle = ajouterMessage("assistant", donnees.reponse);
+    historique.push([question, donnees.reponse]);
+    if (historique.length > 3) historique.shift();
+
+    if (donnees.articles && donnees.articles.length) {
+      const sources = document.createElement("div");
+      sources.className = "sources";
+      sources.innerHTML = '<span class="etiquette">Sources :</span>';
+      donnees.articles.forEach(num => {
+        const lien = document.createElement("a");
+        lien.href = "https://www.legifrance.gouv.fr/search/code?tab_selection=code&searchField=NUM_ARTICLE&query="
+                    + encodeURIComponent(num) + "&searchType=ALL&typePagination=DEFAULT";
+        lien.target = "_blank";
+        lien.rel = "noopener";
+        lien.textContent = num;
+        sources.appendChild(lien);
+      });
+      bulle.appendChild(sources);
+
+      if (typeof donnees.confiance === "number") {
+        const confiance = document.createElement("div");
+        confiance.className = "confiance" + (donnees.confiance_faible ? " faible" : "");
+        confiance.textContent = "Confiance : " + Math.round(donnees.confiance * 100) + " %"
+          + (donnees.confiance_faible ? " — indices faibles, réponse à confirmer" : "");
+        bulle.appendChild(confiance);
+      }
+    }
+
+    const avertissement = document.createElement("div");
+    avertissement.className = "avertissement";
+    avertissement.textContent = donnees.avertissement;
+    bulle.appendChild(avertissement);
+
+    const date = document.createElement("div");
+    date.className = "date-reponse";
+    date.textContent = "Corpus Légifrance du " + donnees.date_corpus;
+    bulle.appendChild(date);
+  }
+
+  function ajouterMessage(type, texte) {
+    const message = document.createElement("div");
+    message.className = "message " + type;
+    const bulle = document.createElement("div");
+    bulle.className = "bulle";
+    bulle.textContent = texte;
+    message.appendChild(bulle);
+    fil.appendChild(message);
+    zone.scrollTop = zone.scrollHeight;
+    return bulle;
+  }
+
+  function ajouterFrappe() {
+    const message = document.createElement("div");
+    message.className = "message assistant frappe";
+    message.innerHTML = '<div class="bulle"><div class="point"></div><div class="point"></div><div class="point"></div></div>';
+    fil.appendChild(message);
+    zone.scrollTop = zone.scrollHeight;
+    return message;
+  }
+
+  saisie.focus();
+</script>
+</body>
+</html>

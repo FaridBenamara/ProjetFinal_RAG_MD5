@@ -1,10 +1,26 @@
 # Assistant Code du travail (RAG)
 
-Assistant de questions-réponses sur le droit du travail français. Le corpus vient de
-l'API Légifrance, la recherche est vectorielle (sentence-transformers + ChromaDB), la
-génération passe par Groq. Pas de LangChain ni LlamaIndex : chaque brique est écrite à
-la main. Chaque réponse cite les numéros d'articles utilisés, et quand la question sort
-du corpus le système le dit au lieu d'inventer.
+Assistant de questions-réponses sur le droit du travail français. Le corpus couvre
+l'intégralité du Code du travail en vigueur — parties législative et réglementaire,
+soit 11 592 articles extraits via l'API Légifrance. La recherche est vectorielle
+(sentence-transformers + ChromaDB), la génération passe par Groq. Pas de LangChain ni
+LlamaIndex : chaque brique est écrite à la main. Chaque réponse cite les numéros
+d'articles utilisés, et quand la question sort du corpus le système le dit au lieu
+d'inventer.
+
+## Le corpus
+
+Tous les articles à l'état VIGUEUR du Code du travail, sans filtre thématique : les
+huit thèmes du sujet sont donc couverts, et le reste aussi (repos dominical, travail
+de nuit, assurance chômage... des sujets que nos tests en conditions réelles ont fait
+remonter très vite). Les parties R et D apportent les modalités concrètes que la
+partie L ne donne pas — c'est R1234-4 qui contient le calcul de l'indemnité de
+licenciement, pas un article L.
+
+Deux défauts des données Légifrance sont corrigés à l'extraction : des articles
+rattachés à deux sections de l'arborescence (dédoublonnage par identifiant), et de
+rares articles avec deux versions simultanément « en vigueur » (on garde la rédaction
+la plus récente).
 
 ## Installation
 
@@ -30,6 +46,32 @@ Au lancement l'application recharge la base existante, elle ne réindexe jamais.
 rafraîchir le corpus, supprimer `data/toc_raw.json` (le cache de l'arbre Légifrance)
 et relancer les étapes 1 et 2.
 
+## Frontend web
+
+```bash
+python -m src.app               # -> http://localhost:5000
+```
+
+Une page unique (`templates/index.html`, HTML/CSS/JS vanilla, aucun framework) : zone
+de chat, badges d'articles cliquables vers legifrance.gouv.fr, avertissement juridique
+et date du corpus sous chaque réponse. La route `POST /ask` renvoie `{"reponse",
+"articles", "avertissement", "date_corpus"}`. Le web passe par exactement le même
+chemin de code que la CLI — modération, reformulation, recherche hybride comprises.
+
+### Déploiement (Railway)
+
+Le dépôt contient un `Procfile` (gunicorn). Sur Railway : créer le service depuis le
+dépôt, définir les variables `GROQ_API_KEY`, `PISTE_CLIENT_ID` et
+`PISTE_CLIENT_SECRET`, et donner comme commande de build :
+
+```
+pip install -r requirements.txt && python -m src.build_corpus && python -m src.indexer
+```
+
+La base vectorielle est construite une fois au build (pas au lancement : au démarrage
+l'application recharge la base, conformément à la contrainte de persistance). Prévoir
+~1 Go de RAM : le modèle d'embedding est chargé en mémoire au démarrage.
+
 ## Questions de réflexion
 
 ### 1. Granularité du chunking
@@ -45,11 +87,14 @@ un assistant juridique c'est le pire défaut possible. Et les chunks deviennent 
 ce qui dilue la recherche.
 
 On est partis sur un entre-deux : un article = un chunk, sauf les articles de moins de
-200 caractères qu'on fusionne avec le chunk précédent de la même section. Chaque chunk
-commence par son numéro et sa section (`Article L3121-1 (Sous-section 1 : Travail
-effectif.) : ...`). Sur nos 819 articles ça donne 722 chunks, dont 81 regroupés,
-médiane 590 caractères. Aucun article n'est coupé : on fusionne des articles entiers,
-on ne découpe jamais.
+200 caractères qu'on fusionne avec le chunk précédent de la même section, et les
+articles de plus de 2 000 caractères qu'on découpe en morceaux — toujours à une
+frontière de phrase, jamais au milieu (certaines annexes réglementaires font plus de
+100 000 caractères : un chunk pareil est inutile à l'embedding et hors de prix dans le
+contexte du LLM). Chaque chunk commence par son numéro et sa section (`Article L3121-1
+(Sous-section 1 : Travail effectif.) : ...`), et chaque morceau d'article découpé garde
+le numéro complet. Sur les 11 592 articles ça donne 10 767 chunks, dont 1 141
+regroupés, médiane 577 caractères, maximum 3 057.
 
 ### 2. Traçabilité
 
@@ -62,9 +107,8 @@ prompt interdit de citer un numéro qui n'y figure pas. Si la recherche ne trouv
 d'assez proche, le code répond directement « je ne trouve pas cette information dans ma
 base » sans appeler le LLM — c'est un seuil de distance qui décide, pas le modèle.
 En pratique le vectoriel seul ne suffit pas pour les questions par numéro : on a mesuré
-que L3121-1 ressort au-delà du rang 30 sur « que dit l'article L3121-1 ? ». D'où la
-recherche hybride prévue au jalon 6 (détection du numéro par regex + récupération
-directe).
+que L3121-1 ressort au-delà du rang 30 sur « que dit l'article L3121-1 ? ». C'est la
+recherche hybride qui garantit ces questions (voir Améliorations).
 
 ### 3. Fraîcheur
 
@@ -102,23 +146,160 @@ finale ne repose pas dessus : l'avertissement « Cet assistant ne fournit pas de
 juridique... » est concaténé par le code du Generator à chaque réponse. Un prompt peut
 être ignoré de temps en temps, une concaténation non.
 
+## Améliorations (jalon 6)
+
+### Reformulation de la question
+
+Un appel LLM court traduit la question de l'utilisateur en vocabulaire du Code avant
+la recherche : sigles développés (CDI, CSE, SMIC...), langage familier remplacé par
+les termes juridiques, fautes corrigées. La recherche se fait sur la question
+reformulée, la génération répond à la question originale — on reformule pour chercher,
+jamais pour répondre. Si l'appel échoue, la question brute est utilisée telle quelle :
+la reformulation ne peut pas casser le pipeline.
+
+Ce qu'elle change, mesuré sur un banc de 30 questions (10 factuelles, 10 en langage
+quotidien, 10 juridiques mais hors Code du travail) :
+
+| question | distance brute | reformulée |
+|---|---|---|
+| « UN CDI DE 45H EST POSSIBLE? » | 0,640 (refusée) | 0,209 (répond, L3121-27) |
+| « montant du SMIC » | 0,577 (refusée) | 0,273 (répond, L3231-2) |
+| « c est quoi le delai pour toucher son solde de tout compte » | 0,815 (refusée) | 0,151 |
+| « je peux me faire virer sans preavis ? » (l'exemple du sujet) | 0,651 (refusée) | 0,326 |
+
+Sur le banc : 5 questions sur 13 sauvées du refus, gain moyen de 0,25 de distance,
+et aucune question hors sujet « sauvée » à tort — le reformulateur traduit, il
+n'attire pas vers le corpus. Deux garde-fous ont été ajoutés au prompt après les
+premiers essais : interdiction d'inventer un chiffre absent de la question (le modèle
+ajoutait « au-delà de quarante heures »...), et obligation de recopier telle quelle
+une question hors sujet (il répondait « je ne peux pas répondre », et ce commentaire
+mentionnant le Code du travail faisait artificiellement chuter la distance).
+
+La reformulation tourne sur `llama-3.1-8b-instant` : la tâche est simple, le petit
+modèle est cinq fois plus rapide, et son quota Groq est distinct de celui du modèle
+de génération — les deux budgets ne se cannibalisent pas.
+
+### Recherche hybride
+
+Une question qui cite un numéro d'article (« que dit L3121-1 ? ») échoue en recherche
+vectorielle pure : mesuré au rang > 30, le numéro n'est pas un token discriminant pour
+l'embedding. La recherche hybride corrige ça : une regex détecte les numéros dans la
+question (graphies tolérées : `L3121-1`, `l. 3121-1`, articles R et D), une table
+numéro → chunks construite au chargement les remonte d'office en tête (distance 0,
+un article cité explicitement est pertinent par définition), et la recherche
+vectorielle complète jusqu'à k. Sans numéro dans la question, le comportement est
+strictement identique au vectoriel.
+
+Deux choix à défendre :
+- les numéros sont détectés sur la question **originale**, pas la reformulée — en
+  test, le modèle de reformulation a inventé que L3121-1 parlait du CDI ; le passage
+  lexical neutralise ce genre de pollution ;
+- les sources affichées sont filtrées aux articles que la réponse cite réellement —
+  avant, les chunks de remplissage vectoriel apparaissaient en source alors qu'ils
+  n'avaient pas servi.
+
+Bonus constaté : « Compare L1234-1 et L1237-13 » produit une synthèse comparative
+correcte des deux articles — le mode comparaison du sujet, obtenu sans code dédié.
+
+### Mode comparaison
+
+L'embedding d'une question comparative entière (« quelle différence entre la rupture
+conventionnelle et le licenciement économique ? ») est une moyenne floue des deux
+notions, qui ne colle bien à aucune : mesuré, le vectoriel simple ne remontait aucun
+article de rupture conventionnelle et un seul de licenciement économique. Quand la
+question suit une forme comparative explicite (regex : « différence entre X et Y »,
+« comparer X et Y »...), chaque notion est cherchée séparément avec la moitié du
+budget de chunks, puis les contextes sont réunis — après quoi la synthèse comparative
+est demandée normalement au modèle. Résultat sur le même exemple : cinq articles de
+rupture conventionnelle et huit de licenciement économique dans le contexte.
+
+### Score de confiance
+
+La similarité du meilleur chunk (1 − distance cosinus) est affichée avec chaque
+réponse, en CLI comme sur le web. Sous 0,45 de distance restante — la zone incertaine
+mesurée sur notre corpus, les questions bien couvertes étant à 0,38 ou moins — la
+réponse est marquée « indices faibles, à confirmer ». Le refus pur reste géré par le
+seuil de 0,55 (voir Limites).
+
+### Historique de conversation
+
+Les trois derniers échanges sont conservés (côté CLI dans la boucle, côté web dans la
+page). Quand une question de suivi arrive (« et pour un CDD ? », « elle peut être
+renouvelée ? »), un appel LLM court la réécrit en question autonome à partir de
+l'historique — « Quelle est la durée maximale de la période d'essai en CDD ? » — et
+c'est cette question autonome qui traverse tout le pipeline (recherche, génération,
+historique). Une question déjà autonome est recopiée telle quelle, et sans historique
+l'étape est sautée : aucun coût sur la première question. Comme la reformulation,
+l'appel tourne sur le petit modèle et retombe sur la question brute en cas de panne.
+
+### Suivi des renvois entre articles
+
+Les articles de loi se citent entre eux (« au sens de l'article L. 1121-2... ») mais
+l'article cité n'est pas dans le chunk — c'était la limite assumée de notre chunking
+« un article = un chunk ». Après le retrieval, le texte des chunks retenus est scanné
+avec la même regex que la recherche hybride, et les articles cités absents du contexte
+y sont ajoutés (plafond : 4). C'est un graphe de citations parcouru à un saut, sans
+appel LLM, déterministe.
+
+Exemple réel : « que dit L1152-2 ? » remonte l'article par l'hybride, puis le suivi de
+renvois ajoute L1121-2 — l'article que L1152-2 cite — et la réponse peut expliquer les
+deux. Sur une question de représailles après dénonciation de harcèlement, c'est le
+renvoi qui apporte L1152-2/L1152-3, que le vectoriel avait manqués.
+
+Un détail de sûreté : l'article ajouté hérite de la distance du chunk qui le cite —
+un renvoi ne peut donc jamais faire passer sous le seuil de refus une question qui
+l'aurait dépassé. Coût : jusqu'à 4 chunks de contexte en plus par question, parfois
+tangentiels ; le filtrage des sources citées les rend invisibles quand ils ne servent
+pas.
+
+### Agent modérateur
+
+Une classe `Moderator` classe chaque question AVANT le pipeline, en deux niveaux :
+un filtre lexical (liste de motifs regex d'injection connus — « ignore tes
+instructions », demandes de révéler le prompt, fausses balises système — zéro appel
+LLM, insensible à la casse), puis, s'il ne détecte rien, une classification LLM
+courte (`temperature=0`, sortie JSON) en trois classes : LEGITIME, INJECTION,
+HORS_SUJET. Une question non légitime reçoit un refus poli et n'entre jamais dans le
+retrieval ni dans le prompt du générateur — c'est ça, la protection. Le verdict et
+sa raison sont loggés.
+
+Le piège de ce composant, c'est le faux positif : une question de droit du travail
+contient naturellement les mots « instructions », « consignes », « ordres ». « Mon
+patron m'ordonne d'ignorer les consignes de sécurité, c'est légal ? » doit passer —
+la règle de distinction du prompt (une instruction ne compte que si elle vise
+l'assistant lui-même) et le principe « en cas de doute, LEGITIME » gèrent ce cas,
+vérifié en test. Les questions juridiques d'autres codes restent LEGITIME : le refus
+hors-corpus du pipeline sait les traiter, ce n'est pas le rôle du modérateur.
+
+Comme la reformulation, la classification tourne sur le petit modèle (quota séparé) ;
+en cas de panne de l'API, le modérateur laisse passer plutôt que de rendre
+l'assistant muet — le filtre lexical, lui, ne tombe jamais en panne.
+
+### Le nombre de chunks : k=10
+
+Sur le corpus des 8 thèmes (722 chunks), k=5 suffisait : 30/30 au banc de test. Sur le
+corpus complet (10 767 chunks), les voisins tangentiels (contrats aidés, formation...)
+évincent l'article attendu vers les rangs 6 à 10 : k=5 perdait 4 questions sur 10,
+k=8 encore 3, k=10 n'en perd plus qu'une (voir Limites). Les dix questions piège
+d'autres codes restent refusées à k=10 — élargir le contexte n'a pas fait répondre à
+tort. C'est l'arbitrage du jalon 4 (« trop peu, la réponse est incomplète ; trop, le
+contexte se noie ») tranché avec des mesures.
+
 ## Limites constatées
 
-- Le corpus ne contient jamais les sigles. « SMIC » ne matche pas alors que « salaire
-  minimum de croissance » sort en rang 1 ; pareil pour « CDD ». Une reformulation de la
-  question par LLM est la piste envisagée.
-- Les questions par numéro d'article échouent en vectoriel pur (rang > 30), voir Q2.
-- Sur nos tests, les questions du domaine restent sous 0,54 de distance (0,17 à 0,28
-  quand la formulation est proche du texte, jusqu'à 0,53 quand elle s'en éloigne) et
-  les questions hors sujet démarrent à 0,56. Le seuil de refus est à 0,55 : il n'écarte
-  que le clairement hors sujet, et dans la zone grise c'est le prompt qui refuse quand
-  le contexte ne répond pas. Un premier seuil à 0,45 refusait à tort des questions
-  légitimes (« comment fonctionne la rupture conventionnelle ? » est à 0,506) — trouvé
-  en session manuelle, recalibré.
-- Les questions en langage très familier (« je travaille 45h en CDI j'ai le droit ? »)
-  retrouvent mal leurs articles (distances 0,66 et plus, chunks non pertinents) : un
-  seuil ne peut rien y faire, c'est la reformulation de la question qui doit les traiter.
-- Les articles les plus longs dépassent la fenêtre du modèle d'embedding et sont
-  tronqués à l'encodage (environ 10 % des chunks). Pas d'impact constaté sur nos tests
-  de validation ; si ça en avait un, la piste serait de découper ces articles par
-  alinéa.
+- Les questions par numéro d'article échouent en vectoriel pur (rang > 30) : prises
+  en charge par la recherche hybride (voir Améliorations).
+- Sur le corpus complet, les distances des questions hors sujet se resserrent : le
+  corpus contient du contenu fiscalo-adjacent (saisies sur salaire) et pénal (sanctions
+  du travail illégal) qui attire des questions d'autres codes sous le seuil de 0,55.
+  Le refus repose alors sur le second étage : le prompt, qui refuse quand le contexte
+  ne répond pas — vérifié sur dix questions piège (droit pénal, fiscal, consommation,
+  famille, route), toutes refusées.
+- Sur les sujets encombrés (licenciement : plusieurs centaines d'articles L et R), la
+  précision du retrieval dépend de la formulation. « Quel préavis pour un licenciement
+  sans faute grave ? » remonte L1234-1 en rang 2 ; « quel préavis pour deux ans
+  d'ancienneté ? » le laisse en rang 9. Un reranking par cross-encoder est la piste
+  identifiée si ce mode d'échec devenait fréquent (mesuré : 1 question sur 30).
+- La fenêtre du modèle d'embedding (~500 caractères utiles) reste plus courte que la
+  médiane des chunks : le début du chunk — numéro, section, premier alinéa — porte
+  l'essentiel du signal. Le découpage à 2 000 caractères borne l'effet.

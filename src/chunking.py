@@ -1,7 +1,12 @@
 import json
+import re
 from dataclasses import dataclass, field
 
 MIN_CHARS = 200
+# au-dela, l'article est decoupe en morceaux (annexes techniques de 100 000
+# caracteres) : un chunk geant est inutile a l'embedding et hors de prix
+# dans le contexte du LLM
+MAX_CHARS = 2000
 
 
 @dataclass
@@ -18,14 +23,17 @@ class Chunker:
     # 1 article = 1 chunk ; les articles courts sont regroupes
     # avec leur voisin de la meme section
 
-    def __init__(self, min_chars=MIN_CHARS):
+    def __init__(self, min_chars=MIN_CHARS, max_chars=MAX_CHARS):
         self.min_chars = min_chars
+        self.max_chars = max_chars
 
     def decouper(self, documents):
         chunks = []
         for doc in documents:
             if self._regroupable(doc, chunks):
                 self._fusionner(chunks[-1], doc)
+            elif len(doc["texte"]) > self.max_chars:
+                chunks.extend(self._decouper_long(doc))
             else:
                 chunks.append(self._nouveau_chunk(doc))
         return chunks
@@ -48,6 +56,30 @@ class Chunker:
     def _fusionner(self, chunk, doc):
         chunk.texte += "\n" + self._texte_embedde(doc)
         chunk.nums.append(doc["num"])
+
+    def _decouper_long(self, doc):
+        # decoupe aux frontieres de phrases, jamais en pleine phrase ;
+        # chaque morceau garde le numero et le prefixe de l'article
+        morceaux, morceau = [], ""
+        for phrase in re.split(r"(?<=[.;!?]) ", doc["texte"]):
+            if morceau and len(morceau) + len(phrase) > self.max_chars:
+                morceaux.append(morceau)
+                morceau = phrase
+            else:
+                morceau = f"{morceau} {phrase}".strip()
+        morceaux.append(morceau)
+        return [self._morceau_vers_chunk(doc, m, i) for i, m in enumerate(morceaux, 1)]
+
+    def _morceau_vers_chunk(self, doc, morceau, position):
+        section_fine = doc["chemin_section"].split(" > ")[-1]
+        return Chunk(
+            id=f"{doc['id']}-{position}",
+            texte=f"Article {doc['num']} ({section_fine}, partie {position}) : {morceau}",
+            nums=[doc["num"]],
+            theme=doc["theme"],
+            chemin_section=doc["chemin_section"],
+            date_version=doc["date_version"],
+        )
 
     def _texte_embedde(self, doc):
         # le numero est dans le texte pour que "que dit L3121-1 ?" matche ;

@@ -4,4 +4,5 @@ groq
 requests
 python-dotenv
 flask
+gunicorn
 pytest

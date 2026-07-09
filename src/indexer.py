@@ -14,15 +14,20 @@ class Indexer:
         self.model = SentenceTransformer(model_name)
         self.client = chromadb.PersistentClient(path=persist_dir)
 
+    # chroma refuse les insertions de plus de ~5400 elements
+    TAILLE_LOT = 5000
+
     def indexer(self, chunks, date_extraction):
         collection = self._nouvelle_collection(date_extraction)
         embeddings = self.model.encode([c.texte for c in chunks], show_progress_bar=True)
-        collection.add(
-            ids=[c.id for c in chunks],
-            embeddings=embeddings,
-            documents=[c.texte for c in chunks],
-            metadatas=[self._metadonnees(c) for c in chunks],
-        )
+        for debut in range(0, len(chunks), self.TAILLE_LOT):
+            lot = chunks[debut : debut + self.TAILLE_LOT]
+            collection.add(
+                ids=[c.id for c in lot],
+                embeddings=embeddings[debut : debut + self.TAILLE_LOT],
+                documents=[c.texte for c in lot],
+                metadatas=[self._metadonnees(c) for c in lot],
+            )
         return collection
 
     def _nouvelle_collection(self, date_extraction):
