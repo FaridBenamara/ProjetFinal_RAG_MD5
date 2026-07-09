@@ -18,6 +18,9 @@ class Generator:
     # le seuil n'ecarte que le clairement hors sujet ; dans la zone grise,
     # c'est le prompt qui refuse si le contexte ne repond pas
     SEUIL_DISTANCE = 0.55
+    # en-deca, on repond mais on previent : les questions bien couvertes
+    # mesurent <= 0.38 de distance, la zone 0.45-0.55 est incertaine
+    SEUIL_CONFIANCE_FAIBLE = 0.45
 
     def __init__(self, api_key, model=MODELE):
         self.client = Groq(api_key=api_key)
@@ -36,7 +39,13 @@ class Generator:
             "reponse": reponse,
             "articles": self._articles_cites(reponse, chunks),
             "avertissement": self.AVERTISSEMENT,
+            "confiance": self._confiance(chunks),
+            "confiance_faible": min(c["distance"] for c in chunks) > self.SEUIL_CONFIANCE_FAIBLE,
         }
+
+    def _confiance(self, chunks):
+        # similarite cosinus du meilleur chunk (1 - distance), entre 0 et 1
+        return round(max(0.0, 1 - min(c["distance"] for c in chunks)), 2)
 
     def _articles_cites(self, reponse, chunks):
         # seuls les articles du contexte que la reponse cite vraiment sont
@@ -46,7 +55,13 @@ class Generator:
         return cites or contexte
 
     def _refus(self):
-        return {"reponse": self.REFUS, "articles": [], "avertissement": self.AVERTISSEMENT}
+        return {
+            "reponse": self.REFUS,
+            "articles": [],
+            "avertissement": self.AVERTISSEMENT,
+            "confiance": 0.0,
+            "confiance_faible": True,
+        }
 
     def _hors_corpus(self, chunks):
         return not chunks or min(c["distance"] for c in chunks) > self.SEUIL_DISTANCE
