@@ -5,9 +5,9 @@ from groq import Groq, GroqError
 # un petit modele suffit pour traduire une question, et son quota Groq est
 # distinct de celui du modele de generation
 MODELE = "llama-3.1-8b-instant"
-PROMPT_SYSTEME = (Path(__file__).parent.parent / "prompts" / "reformulator_system.txt").read_text(
-    encoding="utf-8"
-)
+DOSSIER_PROMPTS = Path(__file__).parent.parent / "prompts"
+PROMPT_SYSTEME = (DOSSIER_PROMPTS / "reformulator_system.txt").read_text(encoding="utf-8")
+PROMPT_CONTEXTUALISEUR = (DOSSIER_PROMPTS / "contextualiseur_system.txt").read_text(encoding="utf-8")
 
 
 class Reformulator:
@@ -22,15 +22,33 @@ class Reformulator:
         # en cas d'echec de l'appel, la question brute fait l'affaire :
         # la reformulation ameliore le pipeline, elle ne doit jamais le casser
         try:
-            return self._appeler_llm(question)
+            return self._appeler_llm(PROMPT_SYSTEME, question)
         except GroqError:
             return question
 
-    def _appeler_llm(self, question):
+    def contextualiser(self, question, historique):
+        # « et pour un CDD ? » devient une question autonome grace aux
+        # derniers echanges ; sans historique il n'y a rien a faire
+        if not historique:
+            return question
+        try:
+            return self._appeler_llm(PROMPT_CONTEXTUALISEUR, self._conversation(question, historique))
+        except GroqError:
+            return question
+
+    def _conversation(self, question, historique):
+        lignes = []
+        for echange_question, echange_reponse in historique[-3:]:
+            lignes.append(f"Q : {echange_question}")
+            lignes.append(f"R : {echange_reponse[:300]}")
+        lignes.append(f"Nouvelle question : {question}")
+        return "\n".join(lignes)
+
+    def _appeler_llm(self, prompt_systeme, contenu):
         completion = self.client.chat.completions.create(
             messages=[
-                {"role": "system", "content": PROMPT_SYSTEME},
-                {"role": "user", "content": question},
+                {"role": "system", "content": prompt_systeme},
+                {"role": "user", "content": contenu},
             ],
             model=self.model,
             temperature=0,
