@@ -201,6 +201,27 @@ Deux choix à défendre :
 Bonus constaté : « Compare L1234-1 et L1237-13 » produit une synthèse comparative
 correcte des deux articles — le mode comparaison du sujet, obtenu sans code dédié.
 
+### Recherche par mots-clés (BM25 maison)
+
+Découverte en production : « donne-moi la période de préavis pour un CDI » était
+refusée. Diagnostic : L1234-1 (le barème du préavis) ne contient jamais les mots
+« contrat à durée indéterminée » — il dit « licenciement », « faute grave »,
+« ancienneté » — et l'embedding le classait au-delà du rang 100, noyé sous des
+dizaines de chunks CDD et contrats aidés qui, eux, contiennent à la fois « préavis »
+et « contrat à durée... ». Même la formulation parfaite « quelle est la durée du
+préavis de licenciement ? » dépassait le rang 100 : aucun reranking n'aurait suffi,
+l'article n'était pas dans les candidats.
+
+Le correctif : un BM25 codé main (~40 lignes — index inversé construit au chargement,
+minuscules, accents retirés, mots vides français) qui cherche par mots, fusionné avec
+le vectoriel par **meilleur rang des deux sources** (départage par la somme des
+rangs). Cette règle de fusion préserve exactement les vainqueurs du vectoriel — zéro
+régression mesurée sur les huit questions de référence — tout en repêchant ceux du
+lexical : préavis de licenciement passe du rang >100 au rang 8, préavis de démission
+au rang 2. Coût : ~50 ms par question, aucun appel LLM. Les chunks venus des seuls
+mots-clés héritent de la pire distance vectorielle du lot, pour ne fausser ni le
+seuil de refus ni le score de confiance.
+
 ### Mode comparaison
 
 L'embedding d'une question comparative entière (« quelle différence entre la rupture
@@ -296,10 +317,11 @@ contexte se noie ») tranché avec des mesures.
   ne répond pas — vérifié sur dix questions piège (droit pénal, fiscal, consommation,
   famille, route), toutes refusées.
 - Sur les sujets encombrés (licenciement : plusieurs centaines d'articles L et R), la
-  précision du retrieval dépend de la formulation. « Quel préavis pour un licenciement
-  sans faute grave ? » remonte L1234-1 en rang 2 ; « quel préavis pour deux ans
-  d'ancienneté ? » le laisse en rang 9. Un reranking par cross-encoder est la piste
-  identifiée si ce mode d'échec devenait fréquent (mesuré : 1 question sur 30).
+  précision du retrieval dépendait fortement de la formulation ; la recherche par
+  mots-clés BM25 (voir Améliorations) rattrape maintenant ces cas. Reste un risque
+  résiduel de « perte au milieu » : l'article repêché arrive parfois en fin de
+  contexte (rang 8-12) et le modèle peut le manquer — un reranking par cross-encoder
+  ordonnerait mieux le contexte, c'est la piste suivante.
 - La fenêtre du modèle d'embedding (~500 caractères utiles) reste plus courte que la
   médiane des chunks : le début du chunk — numéro, section, premier alinéa — porte
   l'essentiel du signal. Le découpage à 2 000 caractères borne l'effet.
