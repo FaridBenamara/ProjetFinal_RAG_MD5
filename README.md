@@ -175,6 +175,29 @@ Deux choix à défendre :
 Bonus constaté : « Compare L1234-1 et L1237-13 » produit une synthèse comparative
 correcte des deux articles — le mode comparaison du sujet, obtenu sans code dédié.
 
+### Agent modérateur
+
+Une classe `Moderator` classe chaque question AVANT le pipeline, en deux niveaux :
+un filtre lexical (liste de motifs regex d'injection connus — « ignore tes
+instructions », demandes de révéler le prompt, fausses balises système — zéro appel
+LLM, insensible à la casse), puis, s'il ne détecte rien, une classification LLM
+courte (`temperature=0`, sortie JSON) en trois classes : LEGITIME, INJECTION,
+HORS_SUJET. Une question non légitime reçoit un refus poli et n'entre jamais dans le
+retrieval ni dans le prompt du générateur — c'est ça, la protection. Le verdict et
+sa raison sont loggés.
+
+Le piège de ce composant, c'est le faux positif : une question de droit du travail
+contient naturellement les mots « instructions », « consignes », « ordres ». « Mon
+patron m'ordonne d'ignorer les consignes de sécurité, c'est légal ? » doit passer —
+la règle de distinction du prompt (une instruction ne compte que si elle vise
+l'assistant lui-même) et le principe « en cas de doute, LEGITIME » gèrent ce cas,
+vérifié en test. Les questions juridiques d'autres codes restent LEGITIME : le refus
+hors-corpus du pipeline sait les traiter, ce n'est pas le rôle du modérateur.
+
+Comme la reformulation, la classification tourne sur le petit modèle (quota séparé) ;
+en cas de panne de l'API, le modérateur laisse passer plutôt que de rendre
+l'assistant muet — le filtre lexical, lui, ne tombe jamais en panne.
+
 ### Le nombre de chunks : k=10
 
 Sur le corpus des 8 thèmes (722 chunks), k=5 suffisait : 30/30 au banc de test. Sur le
