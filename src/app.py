@@ -43,6 +43,8 @@ class WebApp:
                 "reponse": Moderator.REFUS[verdict["classification"]],
                 "articles": [],
                 "avertissement": Generator.AVERTISSEMENT,
+                "confiance": 0.0,
+                "confiance_faible": True,
             }
         else:
             reformulee = self.reformulator.reformuler(question)

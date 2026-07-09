@@ -67,6 +67,10 @@ class ChatCLI:
         print(f"\n{resultat['reponse']}")
         if resultat["articles"]:
             print(f"\nSources : {', '.join(resultat['articles'])}")
+            print(f"Confiance : {resultat['confiance']:.0%}", end="")
+            if resultat["confiance_faible"]:
+                print(" — indices faibles, réponse à confirmer auprès d'un professionnel", end="")
+            print()
         print(f"\n{resultat['avertissement']}")
         print(f"(corpus Légifrance du {self.retriever.date_corpus()})")
 
