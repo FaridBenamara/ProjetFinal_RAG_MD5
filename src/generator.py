@@ -34,9 +34,16 @@ class Generator:
             return self._refus()
         return {
             "reponse": reponse,
-            "articles": [num for chunk in chunks for num in chunk["nums"]],
+            "articles": self._articles_cites(reponse, chunks),
             "avertissement": self.AVERTISSEMENT,
         }
+
+    def _articles_cites(self, reponse, chunks):
+        # seuls les articles du contexte que la reponse cite vraiment sont
+        # donnes en source ; a defaut, tout le contexte (transparence)
+        contexte = [num for chunk in chunks for num in chunk["nums"]]
+        cites = [num for num in contexte if num in reponse]
+        return cites or contexte
 
     def _refus(self):
         return {"reponse": self.REFUS, "articles": [], "avertissement": self.AVERTISSEMENT}
