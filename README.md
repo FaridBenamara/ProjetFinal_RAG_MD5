@@ -201,6 +201,26 @@ Deux choix à défendre :
 Bonus constaté : « Compare L1234-1 et L1237-13 » produit une synthèse comparative
 correcte des deux articles — le mode comparaison du sujet, obtenu sans code dédié.
 
+### Suivi des renvois entre articles
+
+Les articles de loi se citent entre eux (« au sens de l'article L. 1121-2... ») mais
+l'article cité n'est pas dans le chunk — c'était la limite assumée de notre chunking
+« un article = un chunk ». Après le retrieval, le texte des chunks retenus est scanné
+avec la même regex que la recherche hybride, et les articles cités absents du contexte
+y sont ajoutés (plafond : 4). C'est un graphe de citations parcouru à un saut, sans
+appel LLM, déterministe.
+
+Exemple réel : « que dit L1152-2 ? » remonte l'article par l'hybride, puis le suivi de
+renvois ajoute L1121-2 — l'article que L1152-2 cite — et la réponse peut expliquer les
+deux. Sur une question de représailles après dénonciation de harcèlement, c'est le
+renvoi qui apporte L1152-2/L1152-3, que le vectoriel avait manqués.
+
+Un détail de sûreté : l'article ajouté hérite de la distance du chunk qui le cite —
+un renvoi ne peut donc jamais faire passer sous le seuil de refus une question qui
+l'aurait dépassé. Coût : jusqu'à 4 chunks de contexte en plus par question, parfois
+tangentiels ; le filtrage des sources citées les rend invisibles quand ils ne servent
+pas.
+
 ### Agent modérateur
 
 Une classe `Moderator` classe chaque question AVANT le pipeline, en deux niveaux :
