@@ -47,6 +47,20 @@ def test_question_par_numero_remonte_l_article_en_tete(retriever, question, arti
 
 
 def test_question_sans_numero_retombe_sur_le_vectoriel(retriever):
+    # sans numero dans la question, les k premiers chunks sont ceux du
+    # vectoriel ; seuls des renvois peuvent s'ajouter derriere
     hybride = retriever.rechercher_hybride("Combien de jours de congés payés par mois ?", k=5)
     vectoriel = retriever.rechercher("Combien de jours de congés payés par mois ?", k=5)
-    assert [c["id"] for c in hybride] == [c["id"] for c in vectoriel]
+    assert [c["id"] for c in hybride[:5]] == [c["id"] for c in vectoriel]
+
+
+def test_les_renvois_du_chunk_sont_ajoutes_au_contexte(retriever):
+    # L1152-2 cite l'article L1121-2 dans son texte : il doit suivre
+    chunks = retriever.rechercher_hybride("Que dit l'article L1152-2 ?", k=5)
+    nums = [num for chunk in chunks for num in chunk["nums"]]
+    assert "L1121-2" in nums
+
+
+def test_les_renvois_sont_plafonnes(retriever):
+    chunks = retriever.rechercher_hybride("Quelle est la durée légale de travail hebdomadaire ?", k=5)
+    assert len(chunks) <= 5 + 4
