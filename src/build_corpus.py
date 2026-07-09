@@ -8,19 +8,6 @@ from pathlib import Path
 CODE_TRAVAIL_CID = "LEGITEXT000006072050"
 CACHE_ARBRE = Path("data/toc_raw.json")
 
-# plages du tableau du sujet, du plus specifique au plus general
-# (rupture conventionnelle est un sous-cas de licenciement dans le code)
-THEMES = [
-    ("Rupture conventionnelle", "L1237-11", "L1237-19"),
-    ("Licenciement", "L1231-1", "L1237-20"),
-    ("Contrat de travail (CDI, CDD)", "L1221-1", "L1248-11"),
-    ("Harcelement et discrimination", "L1152-1", "L1155-2"),
-    ("Duree du travail et heures supplementaires", "L3121-1", "L3121-36"),
-    ("Conges payes", "L3141-1", "L3141-32"),
-    ("Salaire minimum (SMIC)", "L3231-1", "L3232-9"),
-    ("Representation du personnel", "L2311-1", "L2316-26"),
-]
-
 
 @dataclass
 class Document:
@@ -41,11 +28,11 @@ class CorpusBuilder:
 
     def construire(self):
         arbre = self._charger_arbre()
-        documents = []
-        for article in self._extraire_articles(arbre):
-            theme = self._trouver_theme(article)
-            if theme:
-                documents.append(self._vers_document(article, theme))
+        documents = [
+            self._vers_document(article)
+            for article in self._extraire_articles(arbre)
+            if self._est_retenu(article)
+        ]
         documents = self._dedupliquer(documents)
         self._ecrire(documents)
         return documents
@@ -65,31 +52,41 @@ class CorpusBuilder:
             articles.extend(self._extraire_articles(section))
         return articles
 
-    def _trouver_theme(self, article):
-        if article["etat"] != "VIGUEUR" or not article["num"].startswith("L"):
-            return None
-        num = _parse_num(article["num"])
-        for theme, debut, fin in THEMES:
-            if _parse_num(debut) <= num <= _parse_num(fin):
-                return theme
-        return None
+    def _est_retenu(self, article):
+        # tous les articles en vigueur, parties legislative et reglementaire
+        return article["etat"] == "VIGUEUR"
 
-    def _vers_document(self, article, theme):
+    def _vers_document(self, article):
         return Document(
             id=article["id"],
-            num=article["num"],
+            num=article["num"].strip(),
             texte=_nettoyer_html(article["content"]),
-            theme=theme,
+            theme=self._theme(article),
             chemin_section=" > ".join(t.strip() for t in article["pathTitle"]),
             date_version=_epoch_vers_date(article["dateDebut"]),
         )
 
+    def _theme(self, article):
+        # le "Livre" de l'arborescence sert de theme
+        titres = [t.strip() for t in article["pathTitle"]]
+        for titre in titres:
+            if titre.startswith("Livre"):
+                return titre
+        return titres[1] if len(titres) > 1 else titres[0]
+
     def _dedupliquer(self, documents):
-        # certains articles sont rattaches a deux sections dans l'arbre Legifrance
-        vus = {}
+        # deux defauts des donnees Legifrance : des articles rattaches a deux
+        # sections (dedup par id), et de rares articles avec deux versions
+        # simultanement en vigueur (on garde la redaction la plus recente)
+        par_id = {}
         for doc in documents:
-            vus.setdefault(doc.id, doc)
-        return list(vus.values())
+            par_id.setdefault(doc.id, doc)
+        par_version = {}
+        for doc in par_id.values():
+            cle = (doc.num, doc.chemin_section)
+            if cle not in par_version or doc.date_version > par_version[cle].date_version:
+                par_version[cle] = doc
+        return list(par_version.values())
 
     def _ecrire(self, documents):
         corpus = {
@@ -135,7 +132,8 @@ if __name__ == "__main__":
     builder = CorpusBuilder(client)
     documents = builder.construire()
 
-    print(f"{len(documents)} articles extraits sur {len(THEMES)} themes")
+    themes = {d.theme for d in documents}
+    print(f"{len(documents)} articles extraits, {len(themes)} livres")
     print(f"date d'extraction : {builder._date_extraction()}")
     for doc in random.sample(documents, 10):
         print(f"\n[{doc.theme}] {doc.num} - {doc.chemin_section}")
