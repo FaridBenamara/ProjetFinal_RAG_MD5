@@ -64,3 +64,22 @@ def test_les_renvois_du_chunk_sont_ajoutes_au_contexte(retriever):
 def test_les_renvois_sont_plafonnes(retriever):
     chunks = retriever.rechercher_hybride("Quelle est la durée légale de travail hebdomadaire ?", k=5)
     assert len(chunks) <= 5 + 4
+
+
+def test_une_comparaison_couvre_les_deux_notions(retriever):
+    # l'embedding d'une question comparative entiere ne colle a aucune des
+    # deux notions : chacune doit etre cherchee separement
+    question = (
+        "Quelle est la différence entre la rupture conventionnelle "
+        "et le licenciement pour motif économique ?"
+    )
+    nums = [n for c in retriever.rechercher_hybride(question, k=10) for n in c["nums"]]
+    assert any(n.startswith("L1237") or n.startswith("D1237") for n in nums)
+    assert any(n.startswith("L1233") or n.startswith("L1235") for n in nums)
+
+
+def test_une_question_simple_ne_declenche_pas_la_comparaison(retriever):
+    from src.retriever import COMPARAISON
+
+    assert COMPARAISON.search("Quels sont mes droits en congés payés et RTT ?") is None
+    assert COMPARAISON.search("Quelle différence entre un CDD et un CDI ?")
