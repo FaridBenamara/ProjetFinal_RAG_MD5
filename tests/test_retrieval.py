@@ -46,12 +46,21 @@ def test_question_par_numero_remonte_l_article_en_tete(retriever, question, arti
     assert article_attendu in chunks[0]["nums"], question
 
 
-def test_question_sans_numero_retombe_sur_le_vectoriel(retriever):
-    # sans numero dans la question, les k premiers chunks sont ceux du
-    # vectoriel ; seuls des renvois peuvent s'ajouter derriere
-    hybride = retriever.rechercher_hybride("Combien de jours de congés payés par mois ?", k=5)
-    vectoriel = retriever.rechercher("Combien de jours de congés payés par mois ?", k=5)
-    assert [c["id"] for c in hybride[:5]] == [c["id"] for c in vectoriel]
+def test_le_meilleur_vectoriel_survit_a_la_fusion(retriever):
+    # la fusion par meilleur rang ne doit jamais evincer le vainqueur
+    # de la recherche vectorielle
+    question = "Combien de jours de congés payés par mois ?"
+    hybride = retriever.rechercher_hybride(question, k=5)
+    vectoriel = retriever.rechercher(question, k=5)
+    assert vectoriel[0]["id"] in [c["id"] for c in hybride]
+
+
+def test_les_mots_cles_rattrapent_le_vocabulaire_noye(retriever):
+    # mesure : cette question classait L1234-1 au-dela du rang 100 en
+    # vectoriel pur ; le BM25 le rattrape
+    chunks = retriever.rechercher_hybride("Quelle est la durée du préavis de licenciement ?", k=10)
+    nums = [n for c in chunks for n in c["nums"]]
+    assert "L1234-1" in nums
 
 
 def test_les_renvois_du_chunk_sont_ajoutes_au_contexte(retriever):

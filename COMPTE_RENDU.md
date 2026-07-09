@@ -13,7 +13,7 @@ rédaction la plus récente), la numérotation n'est pas homogène (« L1453-1 A
 numéros de l'ancien code d'avant 2008), et certaines annexes réglementaires font plus
 de 100 000 caractères — inutilisables telles quelles dans un contexte LLM.
 
-Le retrieval nous a appris l'humilité en trois leçons. Un, l'embedding multilingue est
+Le retrieval nous a appris l'humilité en quatre leçons. Un, l'embedding multilingue est
 très sensible à la forme : sans accents ou avec des sigles (« SMIC », « CDI »), les
 distances s'effondrent — le corpus ne contient jamais ces sigles. Deux, notre premier
 seuil de refus (0,45), calibré sur un échantillon trop petit, refusait des questions
@@ -21,7 +21,12 @@ parfaitement légitimes ; c'est une session manuelle qui l'a révélé (« comme
 fonctionne la rupture conventionnelle ? » refusée), et il a été recalibré à 0,55 sur
 une base de mesures élargie. Trois, en passant de 722 à 10 767 chunks, les articles
 attendus se sont fait évincer du top-5 par des voisins tangentiels : k a dû passer de
-5 à 10, mesures à l'appui.
+5 à 10, mesures à l'appui. Quatre, découverte une fois l'application déployée : « la
+période de préavis pour un CDI » était refusée, parce que l'article du barème du
+préavis (L1234-1) ne prononce jamais les mots « contrat à durée indéterminée » —
+l'embedding le classait au-delà du rang 100, aucune reformulation n'y suffisait. Le
+correctif a été une recherche par mots-clés (BM25 écrit à la main) fusionnée au
+vectoriel par meilleur rang, qui repêche ces cas sans dégrader les autres.
 
 Enfin, le petit modèle de reformulation a halluciné de trois façons (un chiffre
 inventé, des méta-réponses au lieu de reformuler, le contenu supposé d'un article cité
