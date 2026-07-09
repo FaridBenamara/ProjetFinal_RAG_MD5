@@ -121,6 +121,49 @@ finale ne repose pas dessus : l'avertissement « Cet assistant ne fournit pas de
 juridique... » est concaténé par le code du Generator à chaque réponse. Un prompt peut
 être ignoré de temps en temps, une concaténation non.
 
+## Améliorations (jalon 6)
+
+### Reformulation de la question
+
+Un appel LLM court traduit la question de l'utilisateur en vocabulaire du Code avant
+la recherche : sigles développés (CDI, CSE, SMIC...), langage familier remplacé par
+les termes juridiques, fautes corrigées. La recherche se fait sur la question
+reformulée, la génération répond à la question originale — on reformule pour chercher,
+jamais pour répondre. Si l'appel échoue, la question brute est utilisée telle quelle :
+la reformulation ne peut pas casser le pipeline.
+
+Ce qu'elle change, mesuré sur un banc de 30 questions (10 factuelles, 10 en langage
+quotidien, 10 juridiques mais hors Code du travail) :
+
+| question | distance brute | reformulée |
+|---|---|---|
+| « UN CDI DE 45H EST POSSIBLE? » | 0,640 (refusée) | 0,209 (répond, L3121-27) |
+| « montant du SMIC » | 0,577 (refusée) | 0,273 (répond, L3231-2) |
+| « c est quoi le delai pour toucher son solde de tout compte » | 0,815 (refusée) | 0,151 |
+| « je peux me faire virer sans preavis ? » (l'exemple du sujet) | 0,651 (refusée) | 0,326 |
+
+Sur le banc : 5 questions sur 13 sauvées du refus, gain moyen de 0,25 de distance,
+et aucune question hors sujet « sauvée » à tort — le reformulateur traduit, il
+n'attire pas vers le corpus. Deux garde-fous ont été ajoutés au prompt après les
+premiers essais : interdiction d'inventer un chiffre absent de la question (le modèle
+ajoutait « au-delà de quarante heures »...), et obligation de recopier telle quelle
+une question hors sujet (il répondait « je ne peux pas répondre », et ce commentaire
+mentionnant le Code du travail faisait artificiellement chuter la distance).
+
+La reformulation tourne sur `llama-3.1-8b-instant` : la tâche est simple, le petit
+modèle est cinq fois plus rapide, et son quota Groq est distinct de celui du modèle
+de génération — les deux budgets ne se cannibalisent pas.
+
+### Le nombre de chunks : k=10
+
+Sur le corpus des 8 thèmes (722 chunks), k=5 suffisait : 30/30 au banc de test. Sur le
+corpus complet (10 767 chunks), les voisins tangentiels (contrats aidés, formation...)
+évincent l'article attendu vers les rangs 6 à 10 : k=5 perdait 4 questions sur 10,
+k=8 encore 3, k=10 n'en perd plus qu'une (voir Limites). Les dix questions piège
+d'autres codes restent refusées à k=10 — élargir le contexte n'a pas fait répondre à
+tort. C'est l'arbitrage du jalon 4 (« trop peu, la réponse est incomplète ; trop, le
+contexte se noie ») tranché avec des mesures.
+
 ## Limites constatées
 
 - Les questions par numéro d'article échouent en vectoriel pur (rang > 30), voir Q2.

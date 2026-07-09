@@ -4,15 +4,17 @@ from dotenv import load_dotenv
 from groq import GroqError
 
 from src.generator import Generator
+from src.reformulator import Reformulator
 from src.retriever import Retriever
 
 
 class ChatCLI:
     # boucle question-reponse en terminal, /quit pour sortir
 
-    def __init__(self, retriever, generator):
+    def __init__(self, retriever, generator, reformulator):
         self.retriever = retriever
         self.generator = generator
+        self.reformulator = reformulator
 
     def lancer(self):
         print(f"Assistant Code du travail — corpus du {self.retriever.date_corpus()}")
@@ -38,15 +40,25 @@ class ChatCLI:
             print("Réessayez, ou vérifiez la clé GROQ_API_KEY et votre connexion.")
 
     def _repondre(self, question):
-        chunks = self.retriever.rechercher(question)
+        # la recherche se fait sur la question reformulee en vocabulaire
+        # juridique, la reponse porte sur la question originale
+        reformulee = self.reformulator.reformuler(question)
+        if reformulee != question:
+            print(f"(recherche : {reformulee})")
+        # k=10 : sur le corpus complet (10 700 chunks), l'article attendu
+        # tombe parfois aux rangs 6-10, evince par des voisins tangentiels ;
+        # mesure sur banc de test, k=5 en ratait 3 sur 5
+        chunks = self.retriever.rechercher(reformulee, k=10)
         resultat = self.generator.repondre(question, chunks)
         print(f"\n{resultat['reponse']}")
         if resultat["articles"]:
             print(f"\nSources : {', '.join(resultat['articles'])}")
         print(f"\n{resultat['avertissement']}")
+        print(f"(corpus Légifrance du {self.retriever.date_corpus()})")
 
 
 if __name__ == "__main__":
     load_dotenv()
-    cli = ChatCLI(Retriever(), Generator(os.environ["GROQ_API_KEY"]))
+    cle = os.environ["GROQ_API_KEY"]
+    cli = ChatCLI(Retriever(), Generator(cle), Reformulator(cle))
     cli.lancer()
