@@ -47,8 +47,12 @@ class ChatCLI:
             print(f"(recherche : {reformulee})")
         # k=10 : sur le corpus complet (10 700 chunks), l'article attendu
         # tombe parfois aux rangs 6-10, evince par des voisins tangentiels ;
-        # mesure sur banc de test, k=5 en ratait 3 sur 5
-        chunks = self.retriever.rechercher(reformulee, k=10)
+        # mesure sur banc de test, k=5 en ratait 3 sur 5.
+        # les numeros d'articles sont detectes sur la question originale,
+        # la reformulation pourrait les alterer
+        chunks = self.retriever.rechercher_hybride(
+            question, k=10, question_vectorielle=reformulee
+        )
         resultat = self.generator.repondre(question, chunks)
         print(f"\n{resultat['reponse']}")
         if resultat["articles"]:

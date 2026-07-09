@@ -81,9 +81,8 @@ prompt interdit de citer un numéro qui n'y figure pas. Si la recherche ne trouv
 d'assez proche, le code répond directement « je ne trouve pas cette information dans ma
 base » sans appeler le LLM — c'est un seuil de distance qui décide, pas le modèle.
 En pratique le vectoriel seul ne suffit pas pour les questions par numéro : on a mesuré
-que L3121-1 ressort au-delà du rang 30 sur « que dit l'article L3121-1 ? ». D'où la
-recherche hybride prévue au jalon 6 (détection du numéro par regex + récupération
-directe).
+que L3121-1 ressort au-delà du rang 30 sur « que dit l'article L3121-1 ? ». C'est la
+recherche hybride qui garantit ces questions (voir Améliorations).
 
 ### 3. Fraîcheur
 
@@ -154,6 +153,28 @@ La reformulation tourne sur `llama-3.1-8b-instant` : la tâche est simple, le pe
 modèle est cinq fois plus rapide, et son quota Groq est distinct de celui du modèle
 de génération — les deux budgets ne se cannibalisent pas.
 
+### Recherche hybride
+
+Une question qui cite un numéro d'article (« que dit L3121-1 ? ») échoue en recherche
+vectorielle pure : mesuré au rang > 30, le numéro n'est pas un token discriminant pour
+l'embedding. La recherche hybride corrige ça : une regex détecte les numéros dans la
+question (graphies tolérées : `L3121-1`, `l. 3121-1`, articles R et D), une table
+numéro → chunks construite au chargement les remonte d'office en tête (distance 0,
+un article cité explicitement est pertinent par définition), et la recherche
+vectorielle complète jusqu'à k. Sans numéro dans la question, le comportement est
+strictement identique au vectoriel.
+
+Deux choix à défendre :
+- les numéros sont détectés sur la question **originale**, pas la reformulée — en
+  test, le modèle de reformulation a inventé que L3121-1 parlait du CDI ; le passage
+  lexical neutralise ce genre de pollution ;
+- les sources affichées sont filtrées aux articles que la réponse cite réellement —
+  avant, les chunks de remplissage vectoriel apparaissaient en source alors qu'ils
+  n'avaient pas servi.
+
+Bonus constaté : « Compare L1234-1 et L1237-13 » produit une synthèse comparative
+correcte des deux articles — le mode comparaison du sujet, obtenu sans code dédié.
+
 ### Le nombre de chunks : k=10
 
 Sur le corpus des 8 thèmes (722 chunks), k=5 suffisait : 30/30 au banc de test. Sur le
@@ -166,8 +187,8 @@ contexte se noie ») tranché avec des mesures.
 
 ## Limites constatées
 
-- Les questions par numéro d'article échouent en vectoriel pur (rang > 30), voir Q2.
-  C'est la recherche hybride (à venir) qui doit les prendre en charge.
+- Les questions par numéro d'article échouent en vectoriel pur (rang > 30) : prises
+  en charge par la recherche hybride (voir Améliorations).
 - Sur le corpus complet, les distances des questions hors sujet se resserrent : le
   corpus contient du contenu fiscalo-adjacent (saisies sur salaire) et pénal (sanctions
   du travail illégal) qui attire des questions d'autres codes sous le seuil de 0,55.
