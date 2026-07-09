@@ -18,6 +18,8 @@ class ChatCLI:
         self.generator = generator
         self.reformulator = reformulator
         self.moderator = moderator
+        # les trois derniers echanges, pour comprendre « et pour un CDD ? »
+        self.historique = []
 
     def lancer(self):
         print(f"Assistant Code du travail — corpus du {self.retriever.date_corpus()}")
@@ -50,8 +52,10 @@ class ChatCLI:
             print(f"\n{Moderator.REFUS[verdict['classification']]}")
             print(f"\n{self.generator.AVERTISSEMENT}")
             return
-        # la recherche se fait sur la question reformulee en vocabulaire
-        # juridique, la reponse porte sur la question originale
+        # une question de suivi devient autonome grace a l'historique,
+        # puis la recherche se fait sur sa version reformulee en vocabulaire
+        # juridique ; la reponse porte sur la question autonome
+        question = self.reformulator.contextualiser(question, self.historique)
         reformulee = self.reformulator.reformuler(question)
         if reformulee != question:
             print(f"(recherche : {reformulee})")
@@ -64,6 +68,7 @@ class ChatCLI:
             question, k=10, question_vectorielle=reformulee
         )
         resultat = self.generator.repondre(question, chunks)
+        self.historique = (self.historique + [(question, resultat["reponse"])])[-3:]
         print(f"\n{resultat['reponse']}")
         if resultat["articles"]:
             print(f"\nSources : {', '.join(resultat['articles'])}")
